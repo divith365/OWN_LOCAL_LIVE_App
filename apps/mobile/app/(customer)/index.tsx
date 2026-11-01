@@ -150,11 +150,7 @@ export default function CustomerMarketplaceScreen() {
   }, [searchQuery]);
 
   const handleHeroAction = () => {
-    // If Ayodhya Hotel exists, navigate to it directly as the POC showcase
-    const ayodhya = merchants.find((m) => m.business_name?.toLowerCase().includes('ayodhya'));
-    if (ayodhya) {
-      router.push(`/(customer)/merchant/${ayodhya.id}` as any);
-    } else if (merchants.length > 0) {
+    if (merchants.length > 0) {
       router.push(`/(customer)/merchant/${merchants[0].id}` as any);
     } else {
       scrollRef.current?.scrollTo({ y: 350, animated: true });
@@ -277,7 +273,7 @@ export default function CustomerMarketplaceScreen() {
             activeOpacity={0.85}
             onPress={handleHeroAction}
           >
-            <Text style={styles.heroBtnText}>Try sample order →</Text>
+            <Text style={styles.heroBtnText}>Explore Stores →</Text>
           </TouchableOpacity>
         </LinearGradient>
 
@@ -370,7 +366,15 @@ export default function CustomerMarketplaceScreen() {
               }}
               activeOpacity={0.8}
             >
-              <Text style={styles.pilotSwitchBtnText}>🛍️ Test With Ilkal Pilot Stores</Text>
+              <Text style={styles.pilotSwitchBtnText}>📍 Switch to Ilkal Central</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.pilotSwitchBtn, { marginTop: 10, backgroundColor: '#ff8a16' }]}
+              onPress={() => router.push('/login' as any)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.pilotSwitchBtnText}>🏪 Store Owner? Register Your Shop</Text>
             </TouchableOpacity>
           </View>
         ) : (

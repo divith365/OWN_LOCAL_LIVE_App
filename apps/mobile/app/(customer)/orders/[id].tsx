@@ -245,7 +245,7 @@ export default function OrderTrackingScreen() {
                 </View>
                 <Text style={styles.celebrationTitle}>Good news! Store confirmed your order</Text>
                 <Text style={styles.celebrationSubtitle}>
-                  {order.merchant_name || 'Ayodhya Hotel'} accepted your dishes and kitchen preparation has started.
+                  {order.merchant_name || 'The store'} has accepted your order and preparation has started.
                 </Text>
               </View>
             </View>

@@ -347,6 +347,12 @@ export class OwnlocalApiClient {
     });
   }
 
+  async deleteAdminMerchant(id: string): Promise<ApiResponse<any>> {
+    return this.request(`/api/admin/merchants/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
   async getAdminRiders(): Promise<ApiResponse<RiderProfile[]>> {
     return this.request('/api/admin/riders');
   }
@@ -355,6 +361,12 @@ export class OwnlocalApiClient {
     return this.request(`/api/admin/riders/${id}/status`, {
       method: 'POST',
       body: JSON.stringify({ status }),
+    });
+  }
+
+  async deleteAdminRider(id: string): Promise<ApiResponse<any>> {
+    return this.request(`/api/admin/riders/${id}`, {
+      method: 'DELETE',
     });
   }
 

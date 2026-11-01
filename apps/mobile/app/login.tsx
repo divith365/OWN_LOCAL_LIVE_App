@@ -183,9 +183,9 @@ export default function LoginScreen() {
     icon: string;
   }> = [
     { id: 'customer', label: 'Customer', phone: '9876543210', desc: 'Ananya • Shopper', icon: '🛍️' },
-    { id: 'merchant', label: 'Merchant', phone: '9876543211', desc: 'Ayodhya Hotel', icon: '🏪' },
-    { id: 'rider', label: 'Rider', phone: '9876543214', desc: 'Ravi K. (KA-29)', icon: '🛵' },
-    { id: 'admin', label: 'Admin', phone: '9876543219', desc: 'Pilot Launch Admin', icon: '🛡️' },
+    { id: 'merchant', label: 'Merchant', phone: '9876543211', desc: 'Store Partner', icon: '🏪' },
+    { id: 'rider', label: 'Rider', phone: '9876543214', desc: 'Fleet Partner', icon: '🛵' },
+    { id: 'admin', label: 'Admin', phone: '9876543219', desc: 'Platform Admin', icon: '🛡️' },
   ];
 
   const handleSelectRole = (r: (typeof demoRoles)[0]) => {

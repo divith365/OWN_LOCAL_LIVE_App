@@ -253,11 +253,11 @@ export default function MerchantDashboardScreen() {
       <View style={styles.merchantHeader}>
         <View style={styles.storeRow}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.storeName}>{merchant?.business_name || 'Ayodhya Hotel'}</Text>
+            <Text style={styles.storeName}>{merchant?.business_name || 'My Store'}</Text>
             <Text style={styles.storeCategory}>
-              {merchant?.category || 'Food & Dining'} • {merchant?.town || 'Ilkal'}
+              {merchant?.category || 'General Store'} • {merchant?.town || 'Ilkal'}
             </Text>
-            <Text style={styles.storePhone}>📞 {merchant?.phone || '9876543211'}</Text>
+            <Text style={styles.storePhone}>📞 {merchant?.phone || 'Pending Phone'}</Text>
           </View>
 
           <View style={styles.toggleBox}>

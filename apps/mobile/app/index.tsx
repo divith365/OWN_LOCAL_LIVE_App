@@ -60,7 +60,7 @@ export default function HomeScreen() {
       id: 'customer',
       title: 'Customer Marketplace',
       kannadaSub: 'ನಿಮ್ಮ ಊರಿನ ಅಂಗಡಿಗಳು, ಹೋಟೆಲ್ & ಕಿರಾಣಿ',
-      desc: 'Browse Ayodhya Hotel, Ilkal Sarees, Kirana & live order with real-time GPS tracking',
+      desc: 'Browse nearby stores, handloom sarees, daily needs & live order with real-time GPS tracking',
       route: '/(customer)',
       icon: '🛍️',
       badge: 'Shop Live',

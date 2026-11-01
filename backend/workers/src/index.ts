@@ -1410,6 +1410,22 @@ app.post('/api/admin/riders/:id/status', async (c) => {
   return c.json({ success: true, data: { id, status: body.status } });
 });
 
+// Admin: Delete Merchant
+app.delete('/api/admin/merchants/:id', async (c) => {
+  const id = c.req.param('id');
+  await c.env.DB.prepare('DELETE FROM products WHERE merchant_id = ?').bind(id).run();
+  await c.env.DB.prepare('DELETE FROM merchant_profiles WHERE id = ?').bind(id).run();
+  return c.json({ success: true, message: `Merchant ${id} deleted successfully` });
+});
+
+// Admin: Delete Rider
+app.delete('/api/admin/riders/:id', async (c) => {
+  const id = c.req.param('id');
+  await c.env.DB.prepare('DELETE FROM rider_locations WHERE rider_id = ?').bind(id).run();
+  await c.env.DB.prepare('DELETE FROM rider_profiles WHERE id = ?').bind(id).run();
+  return c.json({ success: true, message: `Rider ${id} deleted successfully` });
+});
+
 // Admin: Live Town Orders Audit Stream
 app.get('/api/admin/orders', async (c) => {
   const { results: orders } = await c.env.DB.prepare(`

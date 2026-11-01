@@ -276,6 +276,66 @@ export default function AdminDashboardScreen() {
     }
   };
 
+  const handleDeleteMerchant = (merchantId: string, name: string) => {
+    Alert.alert(
+      'Delete Store',
+      `Are you sure you want to permanently delete "${name}"? Its catalog products will also be deleted.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete Store',
+          style: 'destructive',
+          onPress: async () => {
+            setActionLoadingId(merchantId);
+            try {
+              const res = await apiClient.deleteAdminMerchant(merchantId);
+              if (res.success) {
+                Alert.alert('Store Deleted', `"${name}" removed from town.`);
+                fetchAdminData(false);
+              } else {
+                Alert.alert('Error', res.error?.message || 'Could not delete merchant');
+              }
+            } catch (err: any) {
+              Alert.alert('Error', err?.message || 'Delete failed');
+            } finally {
+              setActionLoadingId(null);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleDeleteRider = (riderId: string, name: string) => {
+    Alert.alert(
+      'Remove Rider',
+      `Are you sure you want to remove rider "${name}" from the fleet?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove Rider',
+          style: 'destructive',
+          onPress: async () => {
+            setActionLoadingId(riderId);
+            try {
+              const res = await apiClient.deleteAdminRider(riderId);
+              if (res.success) {
+                Alert.alert('Rider Removed', `"${name}" removed from fleet.`);
+                fetchAdminData(false);
+              } else {
+                Alert.alert('Error', res.error?.message || 'Could not remove rider');
+              }
+            } catch (err: any) {
+              Alert.alert('Error', err?.message || 'Remove failed');
+            } finally {
+              setActionLoadingId(null);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   if (loading) {
     return (
       <View style={[styles.container, styles.center]}>
@@ -454,6 +514,14 @@ export default function AdminDashboardScreen() {
                       <Text style={styles.approveBtnText}>Approve Store</Text>
                     </TouchableOpacity>
                   )}
+
+                  <TouchableOpacity
+                    style={[styles.actionBtn, styles.deleteBtn]}
+                    disabled={isUpdating}
+                    onPress={() => handleDeleteMerchant(m.id, m.business_name)}
+                  >
+                    <Text style={styles.deleteBtnText}>🗑️ Delete</Text>
+                  </TouchableOpacity>
                 </View>
               </View>
             );
@@ -847,6 +915,14 @@ export default function AdminDashboardScreen() {
                       <Text style={styles.approveBtnText}>Approve Rider</Text>
                     </TouchableOpacity>
                   )}
+
+                  <TouchableOpacity
+                    style={[styles.actionBtn, styles.deleteBtn]}
+                    disabled={isUpdating}
+                    onPress={() => handleDeleteRider(r.id, r.name)}
+                  >
+                    <Text style={styles.deleteBtnText}>🗑️ Delete</Text>
+                  </TouchableOpacity>
                 </View>
               </View>
             );
@@ -1087,6 +1163,7 @@ const styles = StyleSheet.create({
   itemActionsRow: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
+    gap: 8,
     marginTop: Spacing.md,
     paddingTop: Spacing.sm,
     borderTopWidth: 1,
@@ -1105,13 +1182,22 @@ const styles = StyleSheet.create({
     color: Colors.white,
   },
   suspendBtn: {
-    backgroundColor: Colors.dangerLight,
+    backgroundColor: Colors.warningLight,
     borderWidth: 1,
-    borderColor: Colors.danger,
+    borderColor: Colors.warning,
   },
   suspendBtnText: {
     ...Typography.captionBold,
-    color: Colors.danger,
+    color: Colors.warning,
+  },
+  deleteBtn: {
+    backgroundColor: '#fee2e2',
+    borderWidth: 1,
+    borderColor: '#fca5a5',
+  },
+  deleteBtnText: {
+    ...Typography.captionBold,
+    color: '#b91c1c',
   },
   orderAuditCard: {
     backgroundColor: Colors.white,
