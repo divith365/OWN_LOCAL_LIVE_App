@@ -10,7 +10,7 @@ import {
   TextInput,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Colors, Spacing, BorderRadius, Typography } from '@ownlocal/ui';
+import { Colors, Spacing, BorderRadius, Typography, getOrderStatusConfig } from '@ownlocal/ui';
 import { useCart } from '../../src/context/CartContext';
 import { apiClient } from '../../src/api';
 import { useAuth } from '../../src/context/AuthContext';
@@ -106,8 +106,8 @@ export default function CartScreen() {
               </View>
               <View style={styles.metaRow}>
                 <Text style={styles.metaLabel}>Order Status:</Text>
-                <Text style={[styles.metaValue, { color: Colors.warning, fontWeight: '700' }]}>
-                  {placedOrder.status}
+                <Text style={[styles.metaValue, { color: getOrderStatusConfig(placedOrder.status).text, fontWeight: '700' }]}>
+                  {getOrderStatusConfig(placedOrder.status).label}
                 </Text>
               </View>
               <View style={styles.metaRow}>

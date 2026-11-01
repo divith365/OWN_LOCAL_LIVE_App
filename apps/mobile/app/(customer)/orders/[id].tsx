@@ -379,16 +379,19 @@ export default function OrderTrackingScreen() {
         {order.history && order.history.length > 0 && (
           <View style={styles.infoCard}>
             <Text style={styles.cardHeader}>Activity Log</Text>
-            {order.history.map((hist: any) => (
-              <View key={hist.id} style={styles.historyRow}>
-                <View style={styles.historyDot} />
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.historyStatus}>{hist.to_status}</Text>
-                  {hist.notes ? <Text style={styles.historyNotes}>{hist.notes}</Text> : null}
-                  <Text style={styles.historyTime}>{hist.created_at}</Text>
+            {order.history.map((hist: any) => {
+              const histConfig = getOrderStatusConfig(hist.to_status);
+              return (
+                <View key={hist.id} style={styles.historyRow}>
+                  <View style={styles.historyDot} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.historyStatus}>{histConfig.label}</Text>
+                    {hist.notes ? <Text style={styles.historyNotes}>{hist.notes}</Text> : null}
+                    <Text style={styles.historyTime}>{hist.created_at}</Text>
+                  </View>
                 </View>
-              </View>
-            ))}
+              );
+            })}
           </View>
         )}
 

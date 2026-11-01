@@ -119,9 +119,10 @@ export default function MerchantDashboardScreen() {
   ) => {
     setProcessingId(orderId);
     try {
+      const statusConfig = getOrderStatusConfig(nextStatus);
       const note = prepTimeMinutes
         ? `Accepted with estimated prep time of ${prepTimeMinutes} mins`
-        : `Status updated to ${nextStatus}`;
+        : `Order marked as ${statusConfig.label}`;
       const res = await apiClient.updateOrderStatus(orderId, nextStatus, note);
       if (res.success) {
         if (nextStatus === 'MERCHANT_CONFIRMED') {
@@ -131,7 +132,7 @@ export default function MerchantDashboardScreen() {
             prepTime: prepTimeMinutes || 15,
           });
         } else {
-          Alert.alert('Status Updated', `Order marked as ${nextStatus.replace(/_/g, ' ')}`);
+          Alert.alert('Status Updated', `Order marked as "${statusConfig.label}"`);
         }
         fetchDashboardData(false);
       } else {
