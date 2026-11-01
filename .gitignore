@@ -1,2 +1,25 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Environment and secrets
+.env
+.env.*.local
+.dev.vars
+
+# Cloudflare Wrangler
+.wrangler/
+
+# Expo / React Native
+.expo/
+dist/
+web-build/
+*.tsbuildinfo
+
+# OS
 .DS_Store
+Thumbs.db
+
+# Vercel
 .vercel

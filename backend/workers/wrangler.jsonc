@@ -1,0 +1,26 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "ownlocal-live-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2024-11-01",
+  "vars": {
+    "ENVIRONMENT": "development",
+    "PILOT_TOWN": "Ilkal",
+    "PILOT_LATITUDE": 15.9587,
+    "PILOT_LONGITUDE": 76.1264
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "ownlocal-live-db",
+      "database_id": "437ca4b7-08c2-4409-85a6-644f07ea0b44",
+      "migrations_dir": "./migrations"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "ASSETS_BUCKET",
+      "bucket_name": "ownlocal-live-assets"
+    }
+  ]
+}

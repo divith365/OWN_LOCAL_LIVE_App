@@ -1,0 +1,45 @@
+{
+  "name": "ownlocal-live-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "OWNLOCAL LIVE Production Marketplace Monorepo",
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "backend/*"
+  ],
+  "scripts": {
+    "start": "npm --workspace=apps/mobile start",
+    "mobile:android": "npm --workspace=apps/mobile run android",
+    "mobile:ios": "npm --workspace=apps/mobile run ios",
+    "mobile:web": "npm --workspace=apps/mobile run web",
+    "worker:dev": "npm --workspace=backend/workers run dev",
+    "worker:deploy": "npm --workspace=backend/workers run deploy",
+    "d1:migrate:local": "npm --workspace=backend/workers run d1:migrate:local",
+    "d1:migrate:remote": "npm --workspace=backend/workers run d1:migrate:remote",
+    "d1:seed:local": "npm --workspace=backend/workers run d1:seed:local",
+    "d1:seed:remote": "npm --workspace=backend/workers run d1:seed:remote",
+    "build": "npm --workspace=packages/* run build --if-present"
+  },
+  "devDependencies": {
+    "expo-router": "~4.0.16",
+    "metro": "0.81.5",
+    "metro-config": "0.81.5",
+    "metro-core": "0.81.5"
+  },
+  "overrides": {
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "react-native": "0.76.6"
+  },
+  "keywords": [
+    "ownlocal-live",
+    "hyperlocal",
+    "marketplace",
+    "expo",
+    "cloudflare-workers",
+    "d1"
+  ],
+  "author": "OWNLOCAL LIVE Team",
+  "license": "UNLICENSED"
+}

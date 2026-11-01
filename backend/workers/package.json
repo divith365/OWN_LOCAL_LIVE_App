@@ -1,0 +1,23 @@
+{
+  "name": "ownlocal-live-api",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "d1:migrate:local": "wrangler d1 migrations apply ownlocal-live-db --local",
+    "d1:migrate:remote": "wrangler d1 migrations apply ownlocal-live-db --remote",
+    "d1:seed:local": "wrangler d1 execute ownlocal-live-db --local --file=./seeds/0001_ilkal_seed.sql",
+    "d1:seed:remote": "wrangler d1 execute ownlocal-live-db --remote --file=./seeds/0001_ilkal_seed.sql"
+  },
+  "dependencies": {
+    "@ownlocal/types": "*",
+    "@ownlocal/validation": "*",
+    "hono": "^4.6.9"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241022.0",
+    "typescript": "^5.6.3",
+    "wrangler": "^4.156.0"
+  }
+}

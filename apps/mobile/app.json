@@ -1,0 +1,30 @@
+{
+  "expo": {
+    "name": "OWNLOCAL LIVE",
+    "slug": "ownlocal-live",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "scheme": "ownlocallive",
+    "splash": {
+      "backgroundColor": "#059669"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.ownlocal.live"
+    },
+    "android": {
+      "package": "com.ownlocal.live",
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION"
+      ]
+    },
+    "web": {
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-router"
+    ]
+  }
+}
