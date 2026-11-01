@@ -35,7 +35,8 @@
         {
           "locationWhenInUsePermission": "OWNLOCAL LIVE needs your location to discover local stores and track deliveries in Ilkal."
         }
-      ]
+      ],
+      "expo-asset"
     ],
     "extra": {
       "router": {
