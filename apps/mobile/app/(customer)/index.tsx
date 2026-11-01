@@ -87,7 +87,7 @@ export default function CustomerMarketplaceScreen() {
       }
     } catch {
       // Fallback
-      setLocationName('Gandhi Chowk, Ilkal • 587125 (Pilot)');
+      setLocationName('Gandhi Chowk, Ilkal • 587125');
       setCoords({ lat: 15.9587, lng: 76.1264 });
     } finally {
       setLocating(false);
@@ -359,22 +359,22 @@ export default function CustomerMarketplaceScreen() {
             </Text>
 
             <TouchableOpacity
-              style={styles.pilotSwitchBtn}
+              style={styles.townSwitchBtn}
               onPress={() => {
                 setCoords({ lat: 15.9587, lng: 76.1264 });
-                setLocationName('Gandhi Chowk, Ilkal • 587125 (Pilot)');
+                setLocationName('Gandhi Chowk, Ilkal • 587125');
               }}
               activeOpacity={0.8}
             >
-              <Text style={styles.pilotSwitchBtnText}>📍 Switch to Ilkal Central</Text>
+              <Text style={styles.townSwitchBtnText}>📍 Switch to Town Center</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.pilotSwitchBtn, { marginTop: 10, backgroundColor: '#ff8a16' }]}
+              style={[styles.townSwitchBtn, { marginTop: 10, backgroundColor: '#ff8a16' }]}
               onPress={() => router.push('/login' as any)}
               activeOpacity={0.8}
             >
-              <Text style={styles.pilotSwitchBtnText}>🏪 Store Owner? Register Your Shop</Text>
+              <Text style={styles.townSwitchBtnText}>🏪 Store Owner? Register Your Shop</Text>
             </TouchableOpacity>
           </View>
         ) : (
@@ -815,14 +815,14 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 18,
   },
-  pilotSwitchBtn: {
+  townSwitchBtn: {
     backgroundColor: '#073f7c',
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 8,
     marginTop: 16,
   },
-  pilotSwitchBtnText: {
+  townSwitchBtnText: {
     color: '#ffffff',
     fontSize: 13,
     fontWeight: '700',

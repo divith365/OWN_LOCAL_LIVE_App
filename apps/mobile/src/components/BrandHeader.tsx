@@ -45,7 +45,7 @@ export function BrandHeader({ currentRole = 'customer', showRoles = true, subtit
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             {rightAction}
             <View style={styles.pill}>
-              <Text style={styles.pillText}>ILKAL PILOT</Text>
+              <Text style={styles.pillText}>LIVE</Text>
             </View>
           </View>
         </View>

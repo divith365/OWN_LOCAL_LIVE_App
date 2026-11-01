@@ -355,7 +355,7 @@ export default function AdminDashboardScreen() {
       >
       {/* Header Banner */}
       <View style={styles.headerCard}>
-        <Text style={styles.townTag}>📍 {metrics.town?.toUpperCase()} PILOT LAUNCH</Text>
+        <Text style={styles.townTag}>📍 {metrics.town?.toUpperCase()} LIVE OPERATIONS</Text>
         <Text style={styles.title}>Town Operations Control Tower</Text>
         <Text style={styles.subtitle}>Super Admin Live Governance • Cloudflare D1 Backend</Text>
       </View>
@@ -438,7 +438,7 @@ export default function AdminDashboardScreen() {
           </View>
 
           <View style={styles.governanceCard}>
-            <Text style={styles.govTitle}>Town Pilot Guidelines (Ilkal)</Text>
+            <Text style={styles.govTitle}>Town Platform Operations Guidelines</Text>
             <Text style={styles.govText}>
               All order state transitions strictly enforce single-store exclusivity, delivery OTP verification, and tamper-proof financial logging.
             </Text>

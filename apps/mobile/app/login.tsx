@@ -281,10 +281,10 @@ export default function LoginScreen() {
 
         {/* Login Card styled after POC */}
         <View style={styles.loginCard}>
-          <Text style={styles.eyebrow}>ILKAL PILOT • PROOF OF CONCEPT</Text>
-          <Text style={styles.title}>Explore the marketplace</Text>
+          <Text style={styles.eyebrow}>HYPERLOCAL DELIVERY MARKETPLACE</Text>
+          <Text style={styles.title}>Sign in to OwnLocal</Text>
           <Text style={styles.subtitle}>
-            Choose a demo role. Credentials are prefilled so you can walk through every side of the marketplace.
+            Select your account persona or enter your phone number to sign in with instant OTP.
           </Text>
 
           {/* 2x2 Demo Role Quick-Fill Grid */}
