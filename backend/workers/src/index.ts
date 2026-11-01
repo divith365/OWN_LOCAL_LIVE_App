@@ -651,7 +651,9 @@ app.get('/api/orders/:id', async (c) => {
   const order: any = await c.env.DB.prepare(`
     SELECT o.*,
       m.business_name as merchant_name, m.address as merchant_address, m.phone as merchant_phone,
-      r.name as rider_name, r.vehicle_number as rider_vehicle_number, r.phone as rider_phone
+      m.latitude as merchant_latitude, m.longitude as merchant_longitude,
+      r.name as rider_name, r.vehicle_number as rider_vehicle_number, r.phone as rider_phone,
+      r.current_latitude as rider_latitude, r.current_longitude as rider_longitude
     FROM orders o
     LEFT JOIN merchant_profiles m ON o.merchant_id = m.id
     LEFT JOIN rider_profiles r ON o.rider_id = r.id
@@ -789,7 +791,7 @@ app.get('/api/customer/orders', async (c) => {
 
 // Merchant Dashboard: Get Store Incoming Orders & Dashboard Stats
 app.get('/api/merchant/dashboard', async (c) => {
-  let merchantId = c.req.query('merchant_id') || 'merch_ayodhya';
+  let merchantId = c.req.query('merchant_id');
 
   const authHeader = c.req.header('Authorization');
   if (authHeader && authHeader.startsWith('Bearer ')) {
@@ -806,8 +808,13 @@ app.get('/api/merchant/dashboard', async (c) => {
     }
   }
 
+  if (!merchantId) {
+    const firstMerch: any = await c.env.DB.prepare('SELECT id FROM merchant_profiles ORDER BY created_at DESC LIMIT 1').first();
+    if (firstMerch) merchantId = firstMerch.id;
+  }
+
   const merchant: any = await c.env.DB.prepare('SELECT * FROM merchant_profiles WHERE id = ?')
-    .bind(merchantId)
+    .bind(merchantId || '')
     .first();
 
   const { results: pendingOrders } = await c.env.DB.prepare(`
@@ -952,6 +959,97 @@ app.post('/api/merchant/products/:id/toggle-stock', async (c) => {
     .run();
 
   return c.json({ success: true, data: { product_id: productId, in_stock: body.in_stock } });
+});
+
+// Merchant: Add New Product / Dish
+app.post('/api/merchant/products', async (c) => {
+  let merchantId = c.req.query('merchant_id') || 'merch_01';
+  const authHeader = c.req.header('Authorization');
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.substring(7);
+    const jwtSecret = c.env.JWT_SECRET || 'ownlocal_live_super_secret_jwt_key_2026_ilkal_pilot';
+    const decoded = await verifyJwt<{ userId: string }>(token, jwtSecret);
+    if (decoded.valid && decoded.payload?.userId) {
+      const merchantByUser: any = await c.env.DB.prepare('SELECT id FROM merchant_profiles WHERE user_id = ?')
+        .bind(decoded.payload.userId)
+        .first();
+      if (merchantByUser) merchantId = merchantByUser.id;
+    }
+  }
+
+  const body = await c.req.json<{
+    merchant_id?: string;
+    name: string;
+    description?: string;
+    price: number;
+    is_veg?: boolean;
+  }>();
+
+  if (body.merchant_id) merchantId = body.merchant_id;
+
+  if (!body.name?.trim() || !body.price || isNaN(Number(body.price))) {
+    return c.json({
+      success: false,
+      error: { code: 'INVALID_INPUT', message: 'Item name and valid price are required' },
+    }, 400);
+  }
+
+  const prodId = `prod_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+  await c.env.DB.prepare(`
+    INSERT INTO products (id, merchant_id, name, description, price, is_veg, in_stock, active)
+    VALUES (?, ?, ?, ?, ?, ?, 1, 1)
+  `)
+    .bind(
+      prodId,
+      merchantId,
+      body.name.trim(),
+      body.description?.trim() || '',
+      Number(body.price),
+      body.is_veg !== false ? 1 : 0
+    )
+    .run();
+
+  const created = await c.env.DB.prepare('SELECT * FROM products WHERE id = ?').bind(prodId).first();
+  return c.json({ success: true, data: created, message: 'Product added to catalog! 🎉' });
+});
+
+// Merchant: Update Existing Product
+app.put('/api/merchant/products/:id', async (c) => {
+  const id = c.req.param('id');
+  const body = await c.req.json<{
+    name?: string;
+    description?: string;
+    price?: number;
+    is_veg?: boolean;
+  }>();
+
+  const existing: any = await c.env.DB.prepare('SELECT * FROM products WHERE id = ?').bind(id).first();
+  if (!existing) {
+    return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Product not found' } }, 404);
+  }
+
+  const name = body.name?.trim() || existing.name;
+  const description = body.description !== undefined ? body.description.trim() : existing.description;
+  const price = body.price !== undefined && !isNaN(Number(body.price)) ? Number(body.price) : existing.price;
+  const isVeg = body.is_veg !== undefined ? (body.is_veg ? 1 : 0) : existing.is_veg;
+
+  await c.env.DB.prepare(`
+    UPDATE products 
+    SET name = ?, description = ?, price = ?, is_veg = ?
+    WHERE id = ?
+  `)
+    .bind(name, description, price, isVeg, id)
+    .run();
+
+  const updated = await c.env.DB.prepare('SELECT * FROM products WHERE id = ?').bind(id).first();
+  return c.json({ success: true, data: updated, message: 'Product updated successfully' });
+});
+
+// Merchant: Delete Product
+app.delete('/api/merchant/products/:id', async (c) => {
+  const id = c.req.param('id');
+  await c.env.DB.prepare('DELETE FROM products WHERE id = ?').bind(id).run();
+  return c.json({ success: true, message: 'Product removed from catalog' });
 });
 
 // Rider Console: Get Active Assignment, Available Jobs Pool (Filtered by Merchant-to-Rider distance), Metrics & Profile

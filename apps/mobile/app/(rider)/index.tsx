@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
   Linking,
   RefreshControl,
+  Vibration,
 } from 'react-native';
 import * as Location from 'expo-location';
 import { Colors, Spacing, BorderRadius, Typography, getOrderStatusConfig } from '@ownlocal/ui';
@@ -18,6 +19,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { apiClient } from '../../src/api';
 import { OrderStatus } from '@ownlocal/types';
 import { BrandHeader } from '../../src/components/BrandHeader';
+import { startBackgroundRiderTracking, stopBackgroundRiderTracking } from '../../src/services/riderLocationService';
+import { triggerLocalOrderAlert } from '../../src/services/notificationService';
 
 export default function RiderConsoleScreen() {
   const [rider, setRider] = useState<any>(null);
@@ -35,6 +38,7 @@ export default function RiderConsoleScreen() {
   const [gpsCoords, setGpsCoords] = useState<{ lat: number; lng: number }>({ lat: 15.9585, lng: 76.126 });
 
   const pollTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const prevJobCountRef = useRef<number>(0);
 
   const fetchRiderData = useCallback(async (isManual = false) => {
     if (isManual) setRefreshing(true);
@@ -43,7 +47,8 @@ export default function RiderConsoleScreen() {
       if (res.success && res.data) {
         setRider(res.data.rider);
         setActiveJob(res.data.activeJob);
-        setAvailableJobs(res.data.availableJobs || []);
+        const newJobs = res.data.availableJobs || [];
+        setAvailableJobs(newJobs);
         if (res.data.metrics) setMetrics(res.data.metrics);
         setIsOnline(Boolean(res.data.rider?.online_status));
         if (res.data.rider?.preferred_radius_km) {
@@ -51,6 +56,13 @@ export default function RiderConsoleScreen() {
         } else if (res.data.dispatch_settings?.rider_preferred_radius_km) {
           setPreferredRadius(Number(res.data.dispatch_settings.rider_preferred_radius_km));
         }
+
+        // Chime and vibrate if a new job offer arrives
+        if (newJobs.length > prevJobCountRef.current && prevJobCountRef.current !== 0) {
+          Vibration.vibrate([0, 400, 200, 400]);
+          triggerLocalOrderAlert('🛵 New Delivery Job Available!', `A new order is available for pickup near you (Payout: ₹35).`);
+        }
+        prevJobCountRef.current = newJobs.length;
       }
     } catch (e) {
       console.error('Failed to fetch rider console', e);
@@ -137,6 +149,11 @@ export default function RiderConsoleScreen() {
     setIsOnline(val);
     try {
       await apiClient.riderToggleDuty(val, rider?.id || 'rider_01');
+      if (val) {
+        startBackgroundRiderTracking().catch((e) => console.warn('Background tracking not started:', e));
+      } else {
+        stopBackgroundRiderTracking().catch((e) => console.warn('Background tracking not stopped:', e));
+      }
     } catch {
       setIsOnline(!val);
     }

@@ -33,8 +33,18 @@
       "permissions": [
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_LOCATION",
+        "POST_NOTIFICATIONS",
+        "VIBRATE",
+        "WAKE_LOCK",
         "android.permission.ACCESS_COARSE_LOCATION",
-        "android.permission.ACCESS_FINE_LOCATION"
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_LOCATION",
+        "android.permission.POST_NOTIFICATIONS"
       ]
     },
     "web": {
@@ -45,7 +55,17 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "OWNLOCAL LIVE needs your location to discover local stores and track deliveries in Ilkal."
+          "locationAlwaysAndWhenInUsePermission": "OWNLOCAL LIVE uses background GPS for delivery partners to match with nearby pickup orders and provide live tracking to customers.",
+          "locationWhenInUsePermission": "OWNLOCAL LIVE needs your location to discover local stores and track deliveries in Ilkal.",
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#ff8a16"
         }
       ],
       "expo-asset"

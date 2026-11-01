@@ -10,6 +10,8 @@ import {
   Alert,
   RefreshControl,
   Modal,
+  TextInput,
+  Vibration,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Spacing, BorderRadius, Typography, getOrderStatusConfig } from '@ownlocal/ui';
@@ -17,6 +19,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { apiClient } from '../../src/api';
 import { OrderStatus, Product } from '@ownlocal/types';
 import { BrandHeader } from '../../src/components/BrandHeader';
+import { triggerLocalOrderAlert } from '../../src/services/notificationService';
 
 export default function MerchantDashboardScreen() {
   const [merchant, setMerchant] = useState<any>(null);
@@ -40,13 +43,22 @@ export default function MerchantDashboardScreen() {
   const [serviceRadius, setServiceRadius] = useState(6.0);
   const [savingDeliverySettings, setSavingDeliverySettings] = useState(false);
 
+  // Product Catalog Editor State
+  const [showProductModal, setShowProductModal] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<any | null>(null);
+  const [productName, setProductName] = useState('');
+  const [productPrice, setProductPrice] = useState('');
+  const [productDesc, setProductDesc] = useState('');
+  const [productIsVeg, setProductIsVeg] = useState(true);
+  const [savingProduct, setSavingProduct] = useState(false);
+
   const prevPendingCountRef = useRef<number>(0);
   const pollTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const fetchDashboardData = useCallback(async (isManual = false) => {
     if (isManual) setRefreshing(true);
     try {
-      const res = await apiClient.getMerchantDashboard('merch_ayodhya');
+      const res = await apiClient.getMerchantDashboard();
       if (res.success && res.data) {
         setMerchant(res.data.merchant);
         setOrders(res.data.orders || []);
@@ -61,15 +73,20 @@ export default function MerchantDashboardScreen() {
         ).length;
 
         if (pendingCount > prevPendingCountRef.current && prevPendingCountRef.current !== 0) {
+          Vibration.vibrate([0, 500, 200, 500]);
+          triggerLocalOrderAlert('🔔 New Order Alert!', `You have ${pendingCount} pending order(s) awaiting acceptance!`);
           Alert.alert('🔔 New Order Alert!', `You have ${pendingCount} pending order(s) awaiting acceptance!`);
         }
         prevPendingCountRef.current = pendingCount;
-      }
 
-      // Fetch products if on STOCK tab
-      const pRes = await apiClient.getProducts('merch_ayodhya');
-      if (pRes.success && pRes.data) {
-        setProducts(pRes.data);
+        // Fetch products for this merchant
+        const currentMerchId = res.data.merchant?.id;
+        if (currentMerchId) {
+          const pRes = await apiClient.getProducts(currentMerchId);
+          if (pRes.success && pRes.data) {
+            setProducts(pRes.data);
+          }
+        }
       }
     } catch (e) {
       console.error('Error fetching dashboard', e);
@@ -78,6 +95,101 @@ export default function MerchantDashboardScreen() {
       setRefreshing(false);
     }
   }, []);
+
+  const handleOpenAddProduct = () => {
+    setEditingProduct(null);
+    setProductName('');
+    setProductPrice('');
+    setProductDesc('');
+    setProductIsVeg(true);
+    setShowProductModal(true);
+  };
+
+  const handleOpenEditProduct = (item: any) => {
+    setEditingProduct(item);
+    setProductName(item.name);
+    setProductPrice(String(item.price));
+    setProductDesc(item.description || '');
+    setProductIsVeg(Boolean(item.is_veg));
+    setShowProductModal(true);
+  };
+
+  const handleSaveProduct = async () => {
+    if (!productName.trim()) {
+      Alert.alert('Required', 'Please enter item/dish name.');
+      return;
+    }
+    const priceNum = parseFloat(productPrice);
+    if (isNaN(priceNum) || priceNum <= 0) {
+      Alert.alert('Invalid Price', 'Please enter a valid price (₹).');
+      return;
+    }
+
+    setSavingProduct(true);
+    try {
+      if (editingProduct) {
+        const res = await apiClient.updateMerchantProduct(editingProduct.id, {
+          name: productName.trim(),
+          description: productDesc.trim(),
+          price: priceNum,
+          is_veg: productIsVeg,
+        });
+        if (res.success) {
+          Alert.alert('Updated! ✨', `"${productName.trim()}" has been updated.`);
+          setShowProductModal(false);
+          fetchDashboardData(false);
+        } else {
+          Alert.alert('Error', res.error?.message || 'Could not update product.');
+        }
+      } else {
+        const res = await apiClient.createMerchantProduct({
+          merchant_id: merchant?.id,
+          name: productName.trim(),
+          description: productDesc.trim(),
+          price: priceNum,
+          is_veg: productIsVeg,
+        });
+        if (res.success) {
+          Alert.alert('Added! 🎉', `"${productName.trim()}" added to your store catalog.`);
+          setShowProductModal(false);
+          fetchDashboardData(false);
+        } else {
+          Alert.alert('Error', res.error?.message || 'Could not add product.');
+        }
+      }
+    } catch (err: any) {
+      Alert.alert('Network Error', err?.message || 'Failed to save product.');
+    } finally {
+      setSavingProduct(false);
+    }
+  };
+
+  const handleDeleteProduct = (item: any) => {
+    Alert.alert(
+      'Remove Product',
+      `Are you sure you want to remove "${item.name}" from your store catalog?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const res = await apiClient.deleteMerchantProduct(item.id);
+              if (res.success) {
+                Alert.alert('Removed', `"${item.name}" removed from catalog.`);
+                fetchDashboardData(false);
+              } else {
+                Alert.alert('Error', res.error?.message || 'Could not delete product.');
+              }
+            } catch (err: any) {
+              Alert.alert('Error', err?.message || 'Delete failed.');
+            }
+          },
+        },
+      ]
+    );
+  };
 
   useEffect(() => {
     fetchDashboardData(false);
@@ -324,7 +436,7 @@ export default function MerchantDashboardScreen() {
           onPress={() => setActiveTab('STOCK')}
         >
           <Text style={[styles.tabText, activeTab === 'STOCK' && styles.tabTextActive]}>
-            📋 Stock ({products.length})
+            🍲 Menu ({products.length})
           </Text>
         </TouchableOpacity>
 
@@ -338,46 +450,79 @@ export default function MerchantDashboardScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Tab Content: Stock Management */}
+      {/* Tab Content: Stock & Menu Catalog Management */}
       {activeTab === 'STOCK' ? (
         <View style={styles.stockSection}>
-          <Text style={styles.sectionHeading}>Live Stock Inventory</Text>
-          <Text style={styles.sectionSub}>Toggle item availability instantly for customers in town</Text>
-
-          <View style={styles.productList}>
-            {products.map((item) => {
-              const inStock = item.in_stock !== false && (item.in_stock as any) !== 0;
-              const isToggling = togglingStockId === item.id;
-
-              return (
-                <View key={item.id} style={styles.stockCard}>
-                  <View style={{ flex: 1, paddingRight: Spacing.md }}>
-                    <View style={styles.vegRow}>
-                      <Text style={styles.vegDot}>{item.is_veg ? '🟢 Veg' : '🔴 Non-Veg'}</Text>
-                      <Text style={[styles.stockStatusBadge, inStock ? styles.badgeInStock : styles.badgeOos]}>
-                        {inStock ? 'In Stock' : 'Out of Stock'}
-                      </Text>
-                    </View>
-                    <Text style={styles.stockItemName}>{item.name}</Text>
-                    <Text style={styles.stockItemPrice}>₹{item.price}</Text>
-                  </View>
-
-                  <View style={styles.stockSwitchCol}>
-                    {isToggling ? (
-                      <ActivityIndicator size="small" color={Colors.primary} />
-                    ) : (
-                      <Switch
-                        value={inStock}
-                        onValueChange={(val) => handleToggleStock(item, val)}
-                        trackColor={{ false: Colors.dangerLight, true: Colors.successLight }}
-                        thumbColor={inStock ? Colors.success : Colors.danger}
-                      />
-                    )}
-                  </View>
-                </View>
-              );
-            })}
+          <View style={styles.stockHeaderRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.sectionHeading}>Store Catalog & Menu</Text>
+              <Text style={styles.sectionSub}>Add dishes, set prices, and manage live item stock</Text>
+            </View>
+            <TouchableOpacity style={styles.addProductBtn} onPress={handleOpenAddProduct}>
+              <Text style={styles.addProductBtnText}>➕ Add Item</Text>
+            </TouchableOpacity>
           </View>
+
+          {products.length === 0 ? (
+            <View style={styles.emptyProductsCard}>
+              <Text style={styles.emptyProductsIcon}>🍽️</Text>
+              <Text style={styles.emptyProductsTitle}>Your Store Menu is Empty</Text>
+              <Text style={styles.emptyProductsSub}>
+                Add your delicious dishes, groceries, or store products so customers in town can order!
+              </Text>
+              <TouchableOpacity style={styles.emptyAddBtn} onPress={handleOpenAddProduct}>
+                <Text style={styles.emptyAddBtnText}>➕ Add First Item to Store</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={styles.productList}>
+              {products.map((item) => {
+                const inStock = item.in_stock !== false && (item.in_stock as any) !== 0;
+                const isToggling = togglingStockId === item.id;
+
+                return (
+                  <View key={item.id} style={styles.stockCard}>
+                    <View style={{ flex: 1, paddingRight: Spacing.md }}>
+                      <View style={styles.vegRow}>
+                        <Text style={styles.vegDot}>{item.is_veg ? '🟢 Veg' : '🔴 Non-Veg'}</Text>
+                        <Text style={[styles.stockStatusBadge, inStock ? styles.badgeInStock : styles.badgeOos]}>
+                          {inStock ? 'In Stock' : 'Out of Stock'}
+                        </Text>
+                      </View>
+                      <Text style={styles.stockItemName}>{item.name}</Text>
+                      {item.description ? (
+                        <Text style={styles.stockItemDesc} numberOfLines={2}>{item.description}</Text>
+                      ) : null}
+                      <Text style={styles.stockItemPrice}>₹{item.price}</Text>
+
+                      {/* Product Action Row: Edit & Delete */}
+                      <View style={styles.productActionRow}>
+                        <TouchableOpacity style={styles.editProductBtn} onPress={() => handleOpenEditProduct(item)}>
+                          <Text style={styles.editProductBtnText}>✏️ Edit</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.deleteProductBtn} onPress={() => handleDeleteProduct(item)}>
+                          <Text style={styles.deleteProductBtnText}>🗑️ Delete</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+
+                    <View style={styles.stockSwitchCol}>
+                      {isToggling ? (
+                        <ActivityIndicator size="small" color={Colors.primary} />
+                      ) : (
+                        <Switch
+                          value={inStock}
+                          onValueChange={(val) => handleToggleStock(item, val)}
+                          trackColor={{ false: Colors.dangerLight, true: Colors.successLight }}
+                          thumbColor={inStock ? Colors.success : Colors.danger}
+                        />
+                      )}
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          )}
         </View>
       ) : activeTab === 'DELIVERY' ? (
         /* Tab Content: Delivery Configuration */
@@ -696,6 +841,110 @@ export default function MerchantDashboardScreen() {
           </View>
         </Modal>
       )}
+
+      {/* Modal: Add or Edit Store Product */}
+      <Modal
+        visible={showProductModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowProductModal(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeaderRow}>
+              <Text style={styles.modalTitle}>
+                {editingProduct ? 'Edit Dish / Item' : 'Add Dish / Product to Store'}
+              </Text>
+              <TouchableOpacity onPress={() => setShowProductModal(false)} style={styles.modalCloseBtn}>
+                <Text style={styles.modalCloseText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Item / Dish Name *</Text>
+                <TextInput
+                  style={styles.formInput}
+                  placeholder="e.g. Masala Dosa or Special Jowar Roti Meals"
+                  placeholderTextColor={Colors.slate400}
+                  value={productName}
+                  onChangeText={setProductName}
+                />
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Price (₹) *</Text>
+                <TextInput
+                  style={styles.formInput}
+                  placeholder="e.g. 70"
+                  placeholderTextColor={Colors.slate400}
+                  keyboardType="numeric"
+                  value={productPrice}
+                  onChangeText={setProductPrice}
+                />
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Description (Optional)</Text>
+                <TextInput
+                  style={[styles.formInput, { height: 70, textAlignVertical: 'top' }]}
+                  placeholder="e.g. Served with spiced potato palya and fresh chutney"
+                  placeholderTextColor={Colors.slate400}
+                  multiline
+                  value={productDesc}
+                  onChangeText={setProductDesc}
+                />
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Diet Preference</Text>
+                <View style={styles.vegToggleRow}>
+                  <TouchableOpacity
+                    style={[styles.vegChip, productIsVeg && styles.vegChipActive]}
+                    onPress={() => setProductIsVeg(true)}
+                  >
+                    <Text style={[styles.vegChipText, productIsVeg && styles.vegChipTextActive]}>
+                      🟢 Vegetarian
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.vegChip, !productIsVeg && styles.nonVegChipActive]}
+                    onPress={() => setProductIsVeg(false)}
+                  >
+                    <Text style={[styles.vegChipText, !productIsVeg && styles.nonVegChipTextActive]}>
+                      🔴 Non-Veg
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              <View style={styles.modalActionRow}>
+                <TouchableOpacity
+                  style={styles.modalCancelBtn}
+                  disabled={savingProduct}
+                  onPress={() => setShowProductModal(false)}
+                >
+                  <Text style={styles.modalCancelText}>Cancel</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.modalSubmitBtn}
+                  disabled={savingProduct}
+                  onPress={handleSaveProduct}
+                >
+                  {savingProduct ? (
+                    <ActivityIndicator size="small" color="#ffffff" />
+                  ) : (
+                    <Text style={styles.modalSubmitText}>
+                      {editingProduct ? 'Save Changes' : 'Add to Store ✨'}
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1257,6 +1506,207 @@ const styles = StyleSheet.create({
   saveSettingsBtnText: {
     fontSize: 14,
     fontWeight: '700',
+    color: Colors.white,
+  },
+  stockHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.sm,
+  },
+  addProductBtn: {
+    backgroundColor: '#ff8a16',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: BorderRadius.md,
+  },
+  addProductBtnText: {
+    ...Typography.captionBold,
+    color: Colors.white,
+    fontWeight: '800',
+  },
+  emptyProductsCard: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.xl,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.border,
+    marginVertical: Spacing.md,
+  },
+  emptyProductsIcon: {
+    fontSize: 40,
+    marginBottom: 8,
+  },
+  emptyProductsTitle: {
+    ...Typography.bodyBold,
+    color: Colors.slate900,
+    marginBottom: 4,
+  },
+  emptyProductsSub: {
+    ...Typography.caption,
+    color: Colors.textMuted,
+    textAlign: 'center',
+    marginBottom: Spacing.md,
+    lineHeight: 18,
+  },
+  emptyAddBtn: {
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: BorderRadius.md,
+  },
+  emptyAddBtnText: {
+    ...Typography.captionBold,
+    color: Colors.white,
+  },
+  stockItemDesc: {
+    ...Typography.caption,
+    color: Colors.slate500,
+    marginTop: 2,
+    lineHeight: 16,
+  },
+  productActionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 8,
+  },
+  editProductBtn: {
+    backgroundColor: Colors.slate100,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
+    borderColor: Colors.slate200,
+  },
+  editProductBtnText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: Colors.slate700,
+  },
+  deleteProductBtn: {
+    backgroundColor: '#fee2e2',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
+    borderColor: '#fca5a5',
+  },
+  deleteProductBtnText: {
+    fontSize: 11,
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 420,
+    backgroundColor: Colors.white,
+    borderRadius: 20,
+    padding: Spacing.lg,
+    maxHeight: '90%',
+  },
+  modalHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.md,
+  },
+  modalTitle: {
+    ...Typography.title3,
+    color: Colors.slate900,
+    fontWeight: '800',
+  },
+  modalCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: Colors.slate100,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalCloseText: {
+    fontSize: 14,
+    color: Colors.slate600,
+    fontWeight: '700',
+  },
+  formGroup: {
+    marginBottom: Spacing.md,
+  },
+  formLabel: {
+    ...Typography.captionBold,
+    color: Colors.slate800,
+    marginBottom: 6,
+  },
+  formInput: {
+    backgroundColor: Colors.slate50,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    ...Typography.body,
+    color: Colors.slate900,
+  },
+  vegToggleRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  vegChip: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1.5,
+    borderColor: Colors.slate200,
+    alignItems: 'center',
+    backgroundColor: Colors.slate50,
+  },
+  vegChipActive: {
+    borderColor: '#10b981',
+    backgroundColor: '#ecfdf5',
+  },
+  nonVegChipActive: {
+    borderColor: '#ef4444',
+    backgroundColor: '#fef2f2',
+  },
+  vegChipText: {
+    ...Typography.captionBold,
+    color: Colors.slate700,
+  },
+  vegChipTextActive: {
+    color: '#059669',
+    fontWeight: '800',
+  },
+  nonVegChipTextActive: {
+    color: '#dc2626',
+    fontWeight: '800',
+  },
+  modalActionRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: Spacing.md,
+    paddingTop: Spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: Colors.slate100,
+  },
+  modalCancelBtn: {
+    flex: 1,
+    backgroundColor: Colors.slate100,
+    paddingVertical: 12,
+    borderRadius: BorderRadius.md,
+    alignItems: 'center',
+  },
+  modalCancelText: {
+    ...Typography.bodyBold,
+    color: Colors.slate700,
+  },
+  modalSubmitBtn: {
+    flex: 2,
+    backgroundColor: '#ff8a16',
+    paddingVertical: 12,
+    borderRadius: BorderRadius.md,
+    alignItems: 'center',
+  },
+  modalSubmitText: {
+    ...Typography.bodyBold,
     color: Colors.white,
   },
 });

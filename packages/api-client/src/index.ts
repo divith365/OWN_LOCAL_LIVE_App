@@ -255,6 +255,37 @@ export class OwnlocalApiClient {
     });
   }
 
+  async createMerchantProduct(data: {
+    merchant_id?: string;
+    name: string;
+    description?: string;
+    price: number;
+    is_veg?: boolean;
+  }): Promise<ApiResponse<any>> {
+    return this.request('/api/merchant/products', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateMerchantProduct(productId: string, data: {
+    name?: string;
+    description?: string;
+    price?: number;
+    is_veg?: boolean;
+  }): Promise<ApiResponse<any>> {
+    return this.request(`/api/merchant/products/${productId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteMerchantProduct(productId: string): Promise<ApiResponse<any>> {
+    return this.request(`/api/merchant/products/${productId}`, {
+      method: 'DELETE',
+    });
+  }
+
   async getRiderConsole(riderId?: string): Promise<ApiResponse<{
     rider: any;
     activeJob: any;

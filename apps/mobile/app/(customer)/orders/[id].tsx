@@ -314,6 +314,103 @@ export default function OrderTrackingScreen() {
           </View>
         )}
 
+        {/* Live In-App Delivery Route Radar Map */}
+        {!isCancelled && !isDelivered && (
+          <View style={styles.mapRadarCard}>
+            <View style={styles.mapHeaderRow}>
+              <View>
+                <Text style={styles.mapTitle}>🗺️ Live Delivery Route Tracker</Text>
+                <Text style={styles.mapSubtitle}>Real-time GPS dispatch & movement</Text>
+              </View>
+              <View style={styles.radarLivePill}>
+                <View style={styles.pulseDot} />
+                <Text style={styles.radarLiveText}>LIVE GPS</Text>
+              </View>
+            </View>
+
+            {/* Visual Route Corridor */}
+            <View style={styles.routeCorridor}>
+              {/* Point 1: Store */}
+              <View style={styles.corridorPoint}>
+                <View style={[styles.corridorIconBox, { backgroundColor: '#e0f2fe', borderColor: '#0284c7' }]}>
+                  <Text style={{ fontSize: 16 }}>🏪</Text>
+                </View>
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <Text style={styles.corridorPointTitle}>STORE: {order.merchant_name || 'Merchant'}</Text>
+                  <Text style={styles.corridorPointSub}>{order.merchant_address || 'Ilkal Store'}</Text>
+                </View>
+                <Text style={styles.corridorStatusText}>
+                  {order.status === 'CREATED' || order.status === 'MERCHANT_CONFIRMATION_PENDING'
+                    ? 'Awaiting Accept'
+                    : 'Confirmed'}
+                </Text>
+              </View>
+
+              {/* Connecting Line with Moving Motorcycle */}
+              <View style={styles.corridorTrackLine}>
+                <View style={styles.corridorTrackDashes} />
+                {order.rider_id ? (
+                  <View style={styles.riderMotorcycleBadge}>
+                    <Text style={{ fontSize: 18 }}>🛵</Text>
+                    <View style={styles.riderPillMini}>
+                      <Text style={styles.riderPillMiniText}>{order.rider_name || 'Rider'}</Text>
+                    </View>
+                  </View>
+                ) : (
+                  <View style={styles.awaitingRiderBadge}>
+                    <Text style={styles.awaitingRiderText}>Finding nearby rider...</Text>
+                  </View>
+                )}
+              </View>
+
+              {/* Point 2: Customer Destination */}
+              <View style={styles.corridorPoint}>
+                <View style={[styles.corridorIconBox, { backgroundColor: '#fef3c7', borderColor: '#f59e0b' }]}>
+                  <Text style={{ fontSize: 16 }}>🏠</Text>
+                </View>
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <Text style={styles.corridorPointTitle}>DELIVERY DESTINATION</Text>
+                  <Text style={styles.corridorPointSub} numberOfLines={1}>{order.delivery_address}</Text>
+                </View>
+                <Text style={styles.corridorStatusText}>
+                  {order.status === 'OUT_FOR_DELIVERY' ? 'En Route 🚀' : 'OTP Protected'}
+                </Text>
+              </View>
+            </View>
+
+            {/* GPS Telemetry Bar */}
+            <View style={styles.telemetryBar}>
+              <View style={styles.telemetryCol}>
+                <Text style={styles.telemetryLabel}>DISPATCH STATUS</Text>
+                <Text style={styles.telemetryVal}>
+                  {order.status === 'OUT_FOR_DELIVERY'
+                    ? 'Out for Delivery'
+                    : order.rider_id
+                    ? 'Rider Claimed'
+                    : 'Dispatch Pool'}
+                </Text>
+              </View>
+              <View style={styles.telemetryDivider} />
+              <View style={styles.telemetryCol}>
+                <Text style={styles.telemetryLabel}>DELIVERY SECURITY</Text>
+                <Text style={styles.telemetryVal}>OTP Protected (****)</Text>
+              </View>
+            </View>
+
+            {/* Action to launch full turn-by-turn map in phone */}
+            <TouchableOpacity
+              style={styles.openExternalMapBtn}
+              onPress={() => {
+                const dest = encodeURIComponent(order.delivery_address + ', Ilkal');
+                Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${dest}`);
+              }}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.openExternalMapText}>🧭 Open Full Turn-by-Turn GPS Map →</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         {/* Delivery Address Card */}
         <View style={styles.infoCard}>
           <Text style={styles.cardHeader}>Delivery Address</Text>
@@ -855,5 +952,172 @@ const styles = StyleSheet.create({
     ...Typography.caption,
     color: '#166534',
     lineHeight: 18,
+  },
+  mapRadarCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.lg,
+    borderWidth: 1.5,
+    borderColor: '#bfdbfe',
+    shadowColor: '#0284c7',
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    elevation: 3,
+    marginBottom: Spacing.sm,
+  },
+  mapHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.md,
+  },
+  mapTitle: {
+    ...Typography.bodyBold,
+    color: Colors.slate900,
+    fontWeight: '800',
+  },
+  mapSubtitle: {
+    ...Typography.caption,
+    color: Colors.textMuted,
+  },
+  radarLivePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#ecfdf5',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: BorderRadius.full,
+    borderWidth: 1,
+    borderColor: '#10b981',
+  },
+  pulseDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#10b981',
+  },
+  radarLiveText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#059669',
+  },
+  routeCorridor: {
+    backgroundColor: '#f8fafc',
+    borderRadius: BorderRadius.md,
+    padding: Spacing.md,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  corridorPoint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  corridorIconBox: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  corridorPointTitle: {
+    ...Typography.captionBold,
+    color: Colors.slate900,
+  },
+  corridorPointSub: {
+    fontSize: 11,
+    color: Colors.slate500,
+  },
+  corridorStatusText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.primaryDark,
+  },
+  corridorTrackLine: {
+    height: 48,
+    marginLeft: 15,
+    borderLeftWidth: 2,
+    borderLeftColor: '#93c5fd',
+    borderStyle: 'dashed',
+    justifyContent: 'center',
+    paddingLeft: 12,
+  },
+  corridorTrackDashes: {},
+  riderMotorcycleBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#ffffff',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: BorderRadius.full,
+    borderWidth: 1,
+    borderColor: '#38bdf8',
+    alignSelf: 'flex-start',
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  riderPillMini: {},
+  riderPillMiniText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: Colors.slate800,
+  },
+  awaitingRiderBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#f1f5f9',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  awaitingRiderText: {
+    fontSize: 10,
+    color: Colors.slate500,
+    fontStyle: 'italic',
+  },
+  telemetryBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+    backgroundColor: '#f1f5f9',
+    borderRadius: BorderRadius.sm,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginTop: Spacing.sm,
+  },
+  telemetryCol: {
+    alignItems: 'center',
+  },
+  telemetryLabel: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: Colors.slate500,
+    letterSpacing: 0.5,
+  },
+  telemetryVal: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: Colors.slate800,
+    marginTop: 2,
+  },
+  telemetryDivider: {
+    width: 1,
+    height: 20,
+    backgroundColor: Colors.slate300,
+  },
+  openExternalMapBtn: {
+    backgroundColor: '#0284c7',
+    borderRadius: BorderRadius.md,
+    paddingVertical: 10,
+    alignItems: 'center',
+    marginTop: Spacing.sm,
+  },
+  openExternalMapText: {
+    ...Typography.captionBold,
+    color: '#ffffff',
+    fontWeight: '800',
   },
 });
