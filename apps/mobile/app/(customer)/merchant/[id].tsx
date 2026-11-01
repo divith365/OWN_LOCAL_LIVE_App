@@ -10,7 +10,7 @@ import {
   TextInput,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Colors, Spacing, BorderRadius, Typography } from '@ownlocal/ui';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { apiClient } from '../../../src/api';
 import { useCart } from '../../../src/context/CartContext';
 import { Product } from '@ownlocal/types';
@@ -103,10 +103,25 @@ export default function MerchantCatalogScreen() {
   const vegCount = useMemo(() => products.filter((p) => Boolean(p.is_veg)).length, [products]);
   const nonVegCount = useMemo(() => products.filter((p) => !Boolean(p.is_veg)).length, [products]);
 
+  const getItemEmoji = (name: string) => {
+    const n = name.toLowerCase();
+    if (n.includes('dosa')) return '🥞';
+    if (n.includes('puri') || n.includes('poori')) return '🥣';
+    if (n.includes('idli') || n.includes('vada') || n.includes('thali') || n.includes('rice') || n.includes('biryani')) return '🍛';
+    if (n.includes('coffee') || n.includes('tea') || n.includes('chai')) return '☕';
+    if (n.includes('cold') || n.includes('drink') || n.includes('juice') || n.includes('water') || n.includes('beverage')) return '🥤';
+    if (n.includes('saree') || n.includes('handloom') || n.includes('silk') || n.includes('cloth')) return '🧵';
+    if (n.includes('oil') || n.includes('dal') || n.includes('atta') || n.includes('sugar') || n.includes('rice')) return '🌾';
+    if (n.includes('apple') || n.includes('banana') || n.includes('fruit') || n.includes('mango')) return '🍎';
+    if (n.includes('vegetable') || n.includes('tomato') || n.includes('onion') || n.includes('potato')) return '🥕';
+    if (n.includes('tablet') || n.includes('medicine') || n.includes('capsule') || n.includes('syrup')) return '💊';
+    return '🍽️';
+  };
+
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color={Colors.primary} />
+        <ActivityIndicator size="large" color="#073f7c" />
         <Text style={styles.loadingText}>Loading store catalog...</Text>
       </View>
     );
@@ -115,23 +130,27 @@ export default function MerchantCatalogScreen() {
   const isCartFromThisStore = cartMerchantId === id;
 
   return (
-    <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* Store Header Card */}
+    <SafeAreaView style={styles.safeArea} edges={['bottom', 'left', 'right']}>
+      <ScrollView contentContainerStyle={[styles.scrollContent, cartItems.length > 0 && { paddingBottom: 110 }]}>
+        {/* Back Link & Store Title Header (POC Style) */}
+        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()} activeOpacity={0.7}>
+          <Text style={styles.backBtnText}>‹ Stores</Text>
+        </TouchableOpacity>
+
         <View style={styles.storeHeader}>
-          <View style={styles.storeHeaderTop}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.storeName}>{merchant?.business_name || 'Store Details'}</Text>
-              <Text style={styles.storeCategory}>{merchant?.category?.toUpperCase()}</Text>
-            </View>
+          <Text style={styles.eyebrow}>
+            {merchant?.business_name ? `${merchant.business_name} • Ilkal` : 'LOCAL MERCHANT DEMO'}
+          </Text>
+          <Text style={styles.storeTitle}>Good food, made nearby.</Text>
+          <Text style={styles.storeSubtitle}>
+            {merchant?.category || 'Breakfast & Dining'} • {merchant?.address || 'Ilkal Main Road'} • Own delivery + partner delivery
+          </Text>
+
+          {/* Badges Row */}
+          <View style={styles.badgeRow}>
             <View style={styles.ratingBadge}>
               <Text style={styles.ratingText}>★ {merchant?.rating || '4.8'}</Text>
             </View>
-          </View>
-
-          <Text style={styles.storeAddress}>📍 {merchant?.address}</Text>
-
-          <View style={styles.badgeRow}>
             <View style={styles.deliveryBadge}>
               <Text style={styles.deliveryBadgeText}>
                 {merchant?.own_delivery_enabled ? '⚡ Direct Store Delivery' : '🛵 Platform Rider Assured'}
@@ -158,17 +177,17 @@ export default function MerchantCatalogScreen() {
         )}
 
         {/* Menu Search Bar */}
-        <View style={styles.searchBar}>
-          <Text style={styles.searchIcon}>🔍</Text>
+        <View style={styles.searchBox}>
+          <Text style={styles.searchIcon}>⌕</Text>
           <TextInput
             style={styles.searchInput}
             placeholder={`Search dishes in ${merchant?.business_name || 'store'}...`}
             value={searchQuery}
             onChangeText={setSearchQuery}
-            placeholderTextColor={Colors.textMuted}
+            placeholderTextColor="#9db0c4"
           />
           {searchQuery !== '' && (
-            <TouchableOpacity onPress={() => setSearchQuery('')}>
+            <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
               <Text style={styles.clearSearch}>✕</Text>
             </TouchableOpacity>
           )}
@@ -179,6 +198,7 @@ export default function MerchantCatalogScreen() {
           <TouchableOpacity
             style={[styles.filterChip, dietFilter === 'ALL' && styles.filterChipActive]}
             onPress={() => setDietFilter('ALL')}
+            activeOpacity={0.8}
           >
             <Text style={[styles.filterText, dietFilter === 'ALL' && styles.filterTextActive]}>
               All ({products.length})
@@ -189,6 +209,7 @@ export default function MerchantCatalogScreen() {
             <TouchableOpacity
               style={[styles.filterChip, dietFilter === 'VEG' && styles.filterChipActive]}
               onPress={() => setDietFilter('VEG')}
+              activeOpacity={0.8}
             >
               <Text style={[styles.filterText, dietFilter === 'VEG' && styles.filterTextActive]}>
                 🟢 Veg ({vegCount})
@@ -200,6 +221,7 @@ export default function MerchantCatalogScreen() {
             <TouchableOpacity
               style={[styles.filterChip, dietFilter === 'NON_VEG' && styles.filterChipActive]}
               onPress={() => setDietFilter('NON_VEG')}
+              activeOpacity={0.8}
             >
               <Text style={[styles.filterText, dietFilter === 'NON_VEG' && styles.filterTextActive]}>
                 🔴 Non-Veg ({nonVegCount})
@@ -213,29 +235,40 @@ export default function MerchantCatalogScreen() {
           Menu Catalog ({filteredProducts.length})
         </Text>
 
-        {/* Product List */}
+        {/* Product Items List matching POC structure */}
         <View style={styles.productList}>
           {filteredProducts.map((item) => {
             const qty = isCartFromThisStore ? getProductQuantity(item.id) : 0;
             const isOutOfStock = item.in_stock === false || (item.in_stock as any) === 0;
 
             return (
-              <View key={item.id} style={[styles.productCard, isOutOfStock && styles.productCardOos]}>
-                <View style={styles.productInfo}>
-                  <View style={styles.vegIndicatorRow}>
-                    <Text style={styles.vegDot}>{item.is_veg ? '🟢 Pure Veg' : '🔴 Non-Veg'}</Text>
-                    {isOutOfStock && <Text style={styles.oosTag}>Out of stock</Text>}
+              <View key={item.id} style={[styles.itemCard, isOutOfStock && styles.itemCardOos]}>
+                {/* 44px Icon Container with warm background */}
+                <View style={styles.itemIconBox}>
+                  <Text style={styles.itemEmoji}>{getItemEmoji(item.name)}</Text>
+                </View>
+
+                {/* Item Text Info */}
+                <View style={styles.itemTextCol}>
+                  <View style={styles.itemTitleRow}>
+                    <Text style={styles.itemName}>{item.name}</Text>
+                    {item.is_veg ? (
+                      <Text style={styles.vegTag}>🟢</Text>
+                    ) : (
+                      <Text style={styles.vegTag}>🔴</Text>
+                    )}
                   </View>
-                  <Text style={styles.productName}>{item.name}</Text>
-                  <Text style={styles.productPrice}>₹{item.price}</Text>
+
                   {item.description ? (
-                    <Text style={styles.productDesc} numberOfLines={2}>
+                    <Text style={styles.itemDesc} numberOfLines={2}>
                       {item.description}
                     </Text>
                   ) : null}
+
+                  <Text style={styles.itemPrice}>₹{item.price}</Text>
                 </View>
 
-                {/* Add / Stepper Counter */}
+                {/* Quantity Stepper / Add Button matching POC */}
                 <View style={styles.qtyContainer}>
                   {isOutOfStock ? (
                     <View style={styles.disabledBtn}>
@@ -245,23 +278,26 @@ export default function MerchantCatalogScreen() {
                     <TouchableOpacity
                       style={styles.addBtn}
                       onPress={() => handleAddToCart(item)}
+                      activeOpacity={0.8}
                     >
-                      <Text style={styles.addBtnText}>ADD +</Text>
+                      <Text style={styles.addBtnText}>+ Add</Text>
                     </TouchableOpacity>
                   ) : (
-                    <View style={styles.counterBox}>
+                    <View style={styles.stepperBox}>
                       <TouchableOpacity
-                        style={styles.counterBtn}
+                        style={styles.stepperBtn}
                         onPress={() => updateQuantity(item.id, -1)}
+                        activeOpacity={0.7}
                       >
-                        <Text style={styles.counterBtnText}>-</Text>
+                        <Text style={styles.stepperBtnText}>−</Text>
                       </TouchableOpacity>
-                      <Text style={styles.counterText}>{qty}</Text>
+                      <Text style={styles.stepperQtyText}>{qty}</Text>
                       <TouchableOpacity
-                        style={styles.counterBtn}
+                        style={styles.stepperBtn}
                         onPress={() => updateQuantity(item.id, 1)}
+                        activeOpacity={0.7}
                       >
-                        <Text style={styles.counterBtnText}>+</Text>
+                        <Text style={styles.stepperBtnText}>+</Text>
                       </TouchableOpacity>
                     </View>
                   )}
@@ -279,243 +315,269 @@ export default function MerchantCatalogScreen() {
         </View>
       </ScrollView>
 
-      {/* Floating Bottom Cart Bar */}
+      {/* Floating Bottom Cart Bar in Vibrant Brand Orange / Navy */}
       {cartItems.length > 0 && (
-        <View style={styles.bottomCartBar}>
+        <View style={styles.floatingCartBar}>
           <View>
             <Text style={styles.cartCountText}>
-              {itemCount} {itemCount === 1 ? 'item' : 'items'}
+              🛒 {itemCount} {itemCount === 1 ? 'item' : 'items'}
               {cartMerchantName ? ` • ${cartMerchantName}` : ''}
             </Text>
             <Text style={styles.cartTotalText}>
               ₹{grandTotal}{' '}
-              <Text style={styles.taxNote}>(incl. ₹30 delivery & platform)</Text>
+              <Text style={styles.taxNote}>(incl. delivery)</Text>
             </Text>
           </View>
 
           <TouchableOpacity
-            style={styles.placeOrderBtn}
+            style={styles.checkoutBtn}
             onPress={() => router.push('/(customer)/cart')}
+            activeOpacity={0.85}
           >
-            <Text style={styles.placeOrderText}>View Cart →</Text>
+            <Text style={styles.checkoutBtnText}>View cart • ₹{grandTotal} →</Text>
           </TouchableOpacity>
         </View>
       )}
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#ffffff',
+  },
   container: {
     flex: 1,
-    backgroundColor: Colors.background,
+    backgroundColor: '#f5f8fc',
   },
   center: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: '#f5f8fc',
   },
   loadingText: {
-    ...Typography.subhead,
-    color: Colors.textMuted,
+    fontSize: 13,
+    color: '#6f7f91',
     marginTop: 12,
   },
   scrollContent: {
-    padding: Spacing.lg,
-    paddingBottom: 110,
+    padding: 16,
+    paddingTop: 10,
+    backgroundColor: '#f5f8fc',
+  },
+  backBtn: {
+    paddingVertical: 6,
+    paddingHorizontal: 0,
+    alignSelf: 'flex-start',
+    marginBottom: 8,
+  },
+  backBtnText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#073f7c',
   },
   storeHeader: {
-    backgroundColor: Colors.white,
-    padding: Spacing.lg,
-    borderRadius: BorderRadius.lg,
+    backgroundColor: '#ffffff',
+    padding: 16,
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: '#dce6ef',
   },
-  storeHeaderTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
+  eyebrow: {
+    fontSize: 10,
+    color: '#078ee8',
+    fontWeight: '900',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
   },
-  storeName: {
-    ...Typography.title2,
-    color: Colors.slate900,
+  storeTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#142b46',
+    marginTop: 4,
   },
-  storeCategory: {
-    ...Typography.caption,
-    color: Colors.primaryDark,
-    fontWeight: '700',
-    marginTop: 2,
-    letterSpacing: 0.5,
-  },
-  storeAddress: {
-    ...Typography.subhead,
-    color: Colors.textMuted,
-    marginTop: 8,
+  storeSubtitle: {
+    fontSize: 11,
+    color: '#6f7f91',
+    marginTop: 4,
+    lineHeight: 16,
   },
   badgeRow: {
     flexDirection: 'row',
     alignItems: 'center',
     flexWrap: 'wrap',
     gap: 8,
-    marginTop: Spacing.md,
+    marginTop: 12,
   },
   ratingBadge: {
-    backgroundColor: Colors.secondaryLight,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: BorderRadius.sm,
+    backgroundColor: '#fff0da',
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 6,
   },
   ratingText: {
-    ...Typography.caption,
-    color: Colors.slate900,
-    fontWeight: '700',
+    fontSize: 11,
+    color: '#a55a00',
+    fontWeight: '800',
   },
   deliveryBadge: {
-    backgroundColor: Colors.primaryTint,
+    backgroundColor: '#eaf8f2',
     paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: BorderRadius.sm,
+    borderRadius: 6,
   },
   deliveryBadgeText: {
-    ...Typography.caption,
-    color: Colors.primaryDark,
-    fontWeight: '600',
+    fontSize: 11,
+    color: '#08774c',
+    fontWeight: '700',
   },
   radiusBadge: {
-    backgroundColor: Colors.slate100,
+    backgroundColor: '#f2f6fa',
     paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: BorderRadius.sm,
+    borderRadius: 6,
   },
   radiusBadgeText: {
-    ...Typography.caption,
-    color: Colors.slate600,
+    fontSize: 11,
+    color: '#6f7f91',
+    fontWeight: '600',
   },
   otherStoreCartNotice: {
-    backgroundColor: Colors.warningLight,
-    borderColor: Colors.warning,
+    backgroundColor: '#fff0da',
+    borderColor: '#ff8a16',
     borderWidth: 1,
-    borderRadius: BorderRadius.md,
-    padding: Spacing.md,
-    marginTop: Spacing.md,
+    borderRadius: 10,
+    padding: 12,
+    marginTop: 12,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
   otherStoreText: {
-    ...Typography.caption,
-    color: Colors.slate800,
+    fontSize: 11,
+    color: '#142b46',
     flex: 1,
   },
   viewCartLink: {
-    ...Typography.captionBold,
-    color: Colors.primaryDark,
-    marginLeft: Spacing.sm,
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#073f7c',
+    marginLeft: 8,
   },
-  searchBar: {
+  searchBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.md,
+    backgroundColor: '#fafcff',
+    borderRadius: 11,
     borderWidth: 1,
-    borderColor: Colors.border,
-    paddingHorizontal: Spacing.md,
-    marginTop: Spacing.lg,
+    borderColor: '#dce6ef',
+    paddingHorizontal: 12,
+    marginTop: 14,
     height: 44,
   },
   searchIcon: {
-    fontSize: 16,
+    fontSize: 18,
+    color: '#6f7f91',
     marginRight: 8,
+    fontWeight: '600',
   },
   searchInput: {
     flex: 1,
-    ...Typography.body,
-    color: Colors.text,
+    fontSize: 14,
+    color: '#142b46',
   },
   clearSearch: {
-    fontSize: 16,
-    color: Colors.textMuted,
+    fontSize: 14,
+    color: '#6f7f91',
     padding: 4,
   },
   filterRow: {
     flexDirection: 'row',
     gap: 8,
-    marginTop: Spacing.md,
+    marginTop: 12,
   },
   filterChip: {
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: BorderRadius.full,
-    backgroundColor: Colors.white,
+    borderRadius: 20,
+    backgroundColor: '#ffffff',
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: '#dce6ef',
   },
   filterChipActive: {
-    backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
+    backgroundColor: '#073f7c',
+    borderColor: '#073f7c',
   },
   filterText: {
-    ...Typography.captionBold,
-    color: Colors.slate700,
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#6f7f91',
   },
   filterTextActive: {
-    color: Colors.white,
+    color: '#ffffff',
   },
   sectionHeading: {
-    ...Typography.title3,
-    color: Colors.slate900,
-    marginTop: Spacing.lg,
-    marginBottom: Spacing.md,
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#142b46',
+    marginTop: 16,
+    marginBottom: 10,
   },
   productList: {
-    gap: Spacing.md,
+    gap: 10,
   },
-  productCard: {
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.md,
-    padding: Spacing.md,
+  itemCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    padding: 13,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: '#dce6ef',
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 12,
+  },
+  itemCardOos: {
+    opacity: 0.55,
+  },
+  itemIconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 10,
+    backgroundColor: '#fff2df',
+    justifyContent: 'center',
     alignItems: 'center',
   },
-  productCardOos: {
-    opacity: 0.6,
+  itemEmoji: {
+    fontSize: 24,
   },
-  productInfo: {
+  itemTextCol: {
     flex: 1,
-    paddingRight: Spacing.md,
   },
-  vegIndicatorRow: {
+  itemTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    marginBottom: 4,
+    gap: 6,
   },
-  vegDot: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: Colors.slate700,
+  itemName: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#142b46',
   },
-  oosTag: {
+  vegTag: {
     fontSize: 10,
-    color: Colors.danger,
-    fontWeight: '700',
-    textTransform: 'uppercase',
   },
-  productName: {
-    ...Typography.bodyBold,
-    color: Colors.slate900,
-  },
-  productPrice: {
-    ...Typography.bodyBold,
-    color: Colors.slate800,
+  itemDesc: {
+    fontSize: 11,
+    color: '#6f7f91',
     marginTop: 2,
+    lineHeight: 15,
   },
-  productDesc: {
-    ...Typography.caption,
-    color: Colors.textMuted,
+  itemPrice: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: '#142b46',
     marginTop: 4,
   },
   qtyContainer: {
@@ -523,98 +585,108 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   addBtn: {
-    backgroundColor: Colors.primaryTint,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: BorderRadius.md,
+    backgroundColor: '#edf5fb',
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 8,
     borderWidth: 1,
-    borderColor: Colors.primary,
+    borderColor: '#dce6ef',
   },
   addBtnText: {
-    ...Typography.subheadBold,
-    color: Colors.primaryDark,
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#073f7c',
   },
-  counterBox: {
+  stepperBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.primary,
-    borderRadius: BorderRadius.md,
+    gap: 6,
   },
-  counterBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+  stepperBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 7,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#dce6ef',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  counterBtnText: {
-    color: Colors.white,
-    fontWeight: '700',
+  stepperBtnText: {
+    color: '#073f7c',
     fontSize: 16,
+    fontWeight: '900',
   },
-  counterText: {
-    color: Colors.white,
-    fontWeight: '700',
-    paddingHorizontal: 6,
+  stepperQtyText: {
+    color: '#142b46',
+    fontWeight: '800',
+    fontSize: 13,
+    minWidth: 16,
+    textAlign: 'center',
   },
   disabledBtn: {
-    backgroundColor: Colors.slate200,
-    paddingHorizontal: 12,
+    backgroundColor: '#f2f6fa',
+    paddingHorizontal: 10,
     paddingVertical: 6,
-    borderRadius: BorderRadius.md,
+    borderRadius: 8,
   },
   disabledBtnText: {
-    ...Typography.caption,
-    color: Colors.slate500,
+    fontSize: 11,
+    color: '#6f7f91',
   },
   emptyContainer: {
     alignItems: 'center',
-    paddingVertical: Spacing.xxl,
+    paddingVertical: 36,
   },
   emptyEmoji: {
-    fontSize: 40,
+    fontSize: 38,
     marginBottom: 8,
   },
   emptyText: {
-    ...Typography.subhead,
-    color: Colors.textMuted,
+    fontSize: 13,
+    color: '#6f7f91',
   },
-  bottomCartBar: {
+  floatingCartBar: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: Colors.slate900,
-    padding: Spacing.lg,
+    backgroundColor: '#142b46',
+    padding: 14,
+    paddingHorizontal: 16,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    borderTopLeftRadius: BorderRadius.xl,
-    borderTopRightRadius: BorderRadius.xl,
-    elevation: 8,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    elevation: 10,
     shadowColor: '#000',
     shadowOpacity: 0.2,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: -3 },
+    shadowRadius: 8,
   },
   cartCountText: {
-    ...Typography.caption,
-    color: Colors.slate400,
+    fontSize: 11,
+    color: '#c8d6e5',
   },
   cartTotalText: {
-    ...Typography.title3,
-    color: Colors.white,
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#ffffff',
   },
   taxNote: {
-    fontSize: 11,
-    color: Colors.slate400,
+    fontSize: 10,
+    color: '#9db0c4',
     fontWeight: '400',
   },
-  placeOrderBtn: {
-    backgroundColor: Colors.primary,
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: BorderRadius.md,
+  checkoutBtn: {
+    backgroundColor: '#ff8a16',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 9,
   },
-  placeOrderText: {
-    ...Typography.bodyBold,
-    color: Colors.white,
+  checkoutBtnText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#ffffff',
   },
 });

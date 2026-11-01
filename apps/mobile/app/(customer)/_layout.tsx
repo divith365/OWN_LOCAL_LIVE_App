@@ -9,30 +9,15 @@ export default function CustomerLayout() {
   return (
     <Stack
       screenOptions={{
-        headerStyle: { backgroundColor: Colors.primary },
-        headerTintColor: Colors.white,
+        headerStyle: { backgroundColor: '#073f7c' },
+        headerTintColor: '#ffffff',
         headerTitleStyle: { fontWeight: '700' },
       }}
     >
       <Stack.Screen
         name="index"
         options={{
-          title: 'Ilkal Marketplace',
-          headerLeft: () => (
-            <TouchableOpacity onPress={() => router.replace('/')} style={{ marginRight: 12 }}>
-              <Text style={{ color: Colors.white, fontSize: 16, fontWeight: '600' }}>← Roles</Text>
-            </TouchableOpacity>
-          ),
-          headerRight: () => (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-              <TouchableOpacity onPress={() => router.push('/(customer)/orders' as any)}>
-                <Text style={{ color: Colors.white, fontSize: 15, fontWeight: '600' }}>📦 Orders</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => router.push('/(customer)/cart')}>
-                <Text style={{ color: Colors.white, fontSize: 15, fontWeight: '600' }}>🛒 Cart</Text>
-              </TouchableOpacity>
-            </View>
-          ),
+          headerShown: false,
         }}
       />
       <Stack.Screen

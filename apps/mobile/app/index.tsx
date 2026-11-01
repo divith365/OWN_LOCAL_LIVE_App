@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
+  Image,
   TouchableOpacity,
   StyleSheet,
   ScrollView,
@@ -74,13 +75,20 @@ export default function RoleSwitcherScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
+      {/* 4px Dual-Gradient Topline matching POC */}
+      <View style={styles.topline}>
+        <View style={styles.toplineCyan} />
+        <View style={styles.toplineOrange} />
+      </View>
+
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* Header */}
+        {/* Header with Official Logo */}
         <View style={styles.header}>
-          <View style={styles.brandRow}>
-            <Text style={styles.brandLogo}>⚡</Text>
-            <Text style={styles.brandTitle}>OWNLOCAL LIVE</Text>
-          </View>
+          <Image
+            source={require('../assets/logo.png')}
+            style={styles.logo}
+            resizeMode="contain"
+          />
           <Text style={styles.tagline}>Hyperlocal Marketplace Platform • Ilkal Pilot</Text>
 
           {/* Cloudflare Backend Status Indicator */}
@@ -195,25 +203,29 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.background,
   },
+  topline: {
+    height: 4,
+    flexDirection: 'row',
+    width: '100%',
+  },
+  toplineCyan: {
+    flex: 55,
+    backgroundColor: '#02a7ef',
+  },
+  toplineOrange: {
+    flex: 45,
+    backgroundColor: '#ff9418',
+  },
   scrollContent: {
     padding: Spacing.xl,
   },
   header: {
     alignItems: 'center',
-    marginVertical: Spacing.md,
+    marginVertical: Spacing.sm,
   },
-  brandRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  brandLogo: {
-    fontSize: 32,
-  },
-  brandTitle: {
-    ...Typography.title1,
-    color: Colors.slate900,
-    letterSpacing: 0.5,
+  logo: {
+    width: 200,
+    height: 55,
   },
   tagline: {
     ...Typography.subhead,

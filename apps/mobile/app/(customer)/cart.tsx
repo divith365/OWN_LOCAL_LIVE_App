@@ -665,7 +665,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   placeOrderActionBtn: {
-    backgroundColor: Colors.primary,
+    backgroundColor: '#ff8a16',
     paddingHorizontal: 28,
     paddingVertical: 14,
     borderRadius: BorderRadius.md,
@@ -673,6 +673,7 @@ const styles = StyleSheet.create({
   placeOrderActionText: {
     ...Typography.bodyBold,
     color: Colors.white,
+    fontWeight: '800',
   },
   emptyIcon: {
     fontSize: 54,

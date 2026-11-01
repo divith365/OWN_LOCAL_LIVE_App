@@ -10,8 +10,10 @@ import {
   RefreshControl,
 } from 'react-native';
 import { Colors, Spacing, BorderRadius, Typography, getOrderStatusConfig } from '@ownlocal/ui';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { apiClient } from '../../src/api';
 import { MerchantProfile, RiderProfile, OrderStatus } from '@ownlocal/types';
+import { BrandHeader } from '../../src/components/BrandHeader';
 
 export default function AdminDashboardScreen() {
   const [metrics, setMetrics] = useState<any>({
@@ -111,11 +113,13 @@ export default function AdminDashboardScreen() {
   }
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.content}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => fetchAdminData(true)} />}
-    >
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#ffffff' }} edges={['top', 'left', 'right']}>
+      <BrandHeader currentRole="admin" />
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.content}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => fetchAdminData(true)} />}
+      >
       {/* Header Banner */}
       <View style={styles.headerCard}>
         <Text style={styles.townTag}>📍 {metrics.town?.toUpperCase()} PILOT LAUNCH</Text>
@@ -379,6 +383,7 @@ export default function AdminDashboardScreen() {
         </View>
       )}
     </ScrollView>
+    </SafeAreaView>
   );
 }
 

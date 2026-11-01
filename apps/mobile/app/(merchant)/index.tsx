@@ -11,8 +11,10 @@ import {
   RefreshControl,
 } from 'react-native';
 import { Colors, Spacing, BorderRadius, Typography, getOrderStatusConfig } from '@ownlocal/ui';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { apiClient } from '../../src/api';
 import { OrderStatus, Product } from '@ownlocal/types';
+import { BrandHeader } from '../../src/components/BrandHeader';
 
 export default function MerchantDashboardScreen() {
   const [merchant, setMerchant] = useState<any>(null);
@@ -184,11 +186,13 @@ export default function MerchantDashboardScreen() {
   }
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.content}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => fetchDashboardData(true)} />}
-    >
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#ffffff' }} edges={['top', 'left', 'right']}>
+      <BrandHeader currentRole="merchant" />
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.content}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => fetchDashboardData(true)} />}
+      >
       {/* Store Banner */}
       <View style={styles.merchantHeader}>
         <View style={styles.storeRow}>
@@ -424,6 +428,7 @@ export default function MerchantDashboardScreen() {
         </View>
       )}
     </ScrollView>
+    </SafeAreaView>
   );
 }
 

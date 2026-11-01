@@ -1,43 +1,50 @@
 export const Colors = {
-  primary: '#059669',
-  primaryDark: '#047857',
-  primaryLight: '#10B981',
-  primaryTint: '#ECFDF5',
+  // Brand Primary & Accents (Authentic OWNLOCAL LIVE)
+  primary: '#073f7c', // Deep Navy Blue
+  primaryDark: '#052d58',
+  primaryLight: '#078ee8', // Bright Blue
+  primaryTint: '#eef5fc',
 
-  secondary: '#F59E0B',
-  secondaryDark: '#D97706',
-  secondaryLight: '#FBBF24',
-  secondaryTint: '#FFFBEB',
+  secondary: '#ff8a16', // Vibrant Brand Orange
+  secondaryDark: '#e67507',
+  secondaryLight: '#ffa340',
+  secondaryTint: '#fff2df', // Warm Store Icon Background
+
+  orange: '#ff8a16',
+  brightBlue: '#078ee8',
+  skyBlue: '#079ce9',
+  toplineCyan: '#02a7ef',
+  toplineOrange: '#ff9418',
 
   // Status Colors
-  success: '#16A34A',
-  successLight: '#DCFCE7',
-  danger: '#DC2626',
-  dangerLight: '#FEE2E2',
-  warning: '#D97706',
-  warningLight: '#FEF3C7',
-  info: '#2563EB',
-  infoLight: '#DBEAFE',
+  success: '#159b64',
+  successLight: '#eaf8f2',
+  danger: '#dc2626',
+  dangerLight: '#fee2e2',
+  warning: '#ff8a16',
+  warningLight: '#fff0da',
+  info: '#078ee8',
+  infoLight: '#eef5fc',
 
-  // Neutrals
-  slate900: '#0F172A',
-  slate800: '#1E293B',
-  slate700: '#334155',
-  slate600: '#475569',
-  slate500: '#64748B',
-  slate400: '#94A3B8',
-  slate300: '#CBD5E1',
-  slate200: '#E2E8F0',
-  slate100: '#F1F5F9',
-  slate50: '#F8FAFC',
+  // Neutrals & Surface Colors
+  slate900: '#142b46', // Deep Ink text
+  slate800: '#1e3857',
+  slate700: '#334b6b',
+  slate600: '#6f7f91', // Muted text
+  slate500: '#7a8794',
+  slate400: '#9db0c4',
+  slate300: '#c8d6e5',
+  slate200: '#dce6ef', // Clean Line / Border
+  slate100: '#f2f6fa', // Role pill inactive
+  slate50: '#f5f8fc', // Page background
   white: '#FFFFFF',
 
   // Semantic
-  background: '#F8FAFC',
+  background: '#f5f8fc',
   card: '#FFFFFF',
-  text: '#0F172A',
-  textMuted: '#64748B',
-  border: '#E2E8F0',
+  text: '#142b46',
+  textMuted: '#6f7f91',
+  border: '#dce6ef',
 };
 
 export const Spacing = {

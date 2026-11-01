@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -11,25 +11,34 @@ import {
   Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
 import * as Location from 'expo-location';
 import { Colors, Spacing, BorderRadius, Typography } from '@ownlocal/ui';
 import { apiClient } from '../../src/api';
 import { useCart } from '../../src/context/CartContext';
+import { BrandHeader } from '../../src/components/BrandHeader';
 
-const CATEGORIES = [
-  { id: 'all', name: 'All Stores' },
-  { id: 'Food & Dining', name: 'Food & Dining' },
-  { id: 'Ilkal Sarees & Handloom', name: 'Ilkal Sarees' },
-  { id: 'Kirana & Daily Needs', name: 'Kirana Store' },
-  { id: 'Pharmacy & Healthcare', name: 'Pharmacy' },
-  { id: 'Fresh Fruits & Veggies', name: 'Fresh Fruits' },
+interface CategoryItem {
+  id: string;
+  name: string;
+  icon: string;
+}
+
+const CATEGORIES: CategoryItem[] = [
+  { id: 'Food & Dining', name: 'Food', icon: '🍲' },
+  { id: 'Kirana & Daily Needs', name: 'Grocery', icon: '🛒' },
+  { id: 'Fresh Fruits & Veggies', name: 'Produce', icon: '🥕' },
+  { id: 'Ilkal Sarees & Handloom', name: 'Ilkal Sarees', icon: '🧵' },
+  { id: 'Pharmacy & Healthcare', name: 'Pharmacy', icon: '💊' },
 ];
 
 export default function CustomerMarketplaceScreen() {
   const router = useRouter();
   const { itemCount, grandTotal } = useCart();
+  const scrollRef = useRef<ScrollView>(null);
 
-  const [selectedCategory, setSelectedCategory] = useState('all');
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [merchants, setMerchants] = useState<any[]>([]);
   const [productResults, setProductResults] = useState<any[]>([]);
@@ -128,84 +137,61 @@ export default function CustomerMarketplaceScreen() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
+  const handleHeroAction = () => {
+    // If Ayodhya Hotel exists, navigate to it directly as the POC showcase
+    const ayodhya = merchants.find((m) => m.business_name?.toLowerCase().includes('ayodhya'));
+    if (ayodhya) {
+      router.push(`/(customer)/merchant/${ayodhya.id}` as any);
+    } else if (merchants.length > 0) {
+      router.push(`/(customer)/merchant/${merchants[0].id}` as any);
+    } else {
+      scrollRef.current?.scrollTo({ y: 350, animated: true });
+    }
+  };
+
+  const getStoreEmoji = (category: string) => {
+    if (category.includes('Food')) return '🍲';
+    if (category.includes('Saree')) return '🧵';
+    if (category.includes('Kirana')) return '🛍️';
+    if (category.includes('Pharmacy')) return '💊';
+    if (category.includes('Produce') || category.includes('Fruit')) return '🥬';
+    return '🏬';
+  };
+
   return (
-    <View style={styles.container}>
-      {/* Location Bar with Native GPS detection */}
-      <View style={styles.locationBar}>
-        <View style={styles.locationInfo}>
-          <Text style={styles.locationLabel}>DELIVERING TO</Text>
-          <Text style={styles.locationText} numberOfLines={1}>
-            📍 {locationName}
-          </Text>
-        </View>
-        <TouchableOpacity
-          style={styles.changeLocBtn}
-          disabled={locating}
-          onPress={handleDetectGps}
-        >
-          {locating ? (
-            <ActivityIndicator size="small" color={Colors.primaryDark} />
-          ) : (
-            <Text style={styles.changeLocText}>⚡ Detect GPS</Text>
-          )}
-        </TouchableOpacity>
-      </View>
-
-      {/* Search Input Bar */}
-      <View style={styles.searchContainer}>
-        <View style={styles.searchBox}>
-          <Text style={styles.searchIcon}>🔍</Text>
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search stores, masala dosa, sarees, kirana..."
-            placeholderTextColor={Colors.slate400}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            returnKeyType="search"
-          />
-          {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery('')}>
-              <Text style={styles.clearSearch}>✕</Text>
+    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      {/* Authentic POC Brand Header with Dual Gradient Topline & 4-Role Navigation */}
+      <BrandHeader
+        currentRole="customer"
+        rightAction={
+          <View style={styles.headerActionRow}>
+            <TouchableOpacity
+              onPress={() => router.push('/(customer)/orders' as any)}
+              style={styles.headerBtn}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.headerBtnText}>📦</Text>
             </TouchableOpacity>
-          )}
-        </View>
-      </View>
+            <TouchableOpacity
+              onPress={() => router.push('/(customer)/cart')}
+              style={styles.headerBtn}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.headerBtnText}>🛒</Text>
+              {itemCount > 0 && (
+                <View style={styles.badgeCount}>
+                  <Text style={styles.badgeCountText}>{itemCount}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          </View>
+        }
+      />
 
-      {/* Category Filter Carousel */}
-      <View>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.categoryScroll}
-        >
-          {CATEGORIES.map((cat) => {
-            const isSelected = selectedCategory === cat.id;
-            return (
-              <TouchableOpacity
-                key={cat.id}
-                style={[
-                  styles.categoryChip,
-                  isSelected && styles.categoryChipSelected,
-                ]}
-                onPress={() => setSelectedCategory(cat.id)}
-              >
-                <Text
-                  style={[
-                    styles.categoryChipText,
-                    isSelected && styles.categoryChipTextSelected,
-                  ]}
-                >
-                  {cat.name}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-      </View>
-
-      {/* Feed Content */}
       <ScrollView
-        contentContainerStyle={[styles.feedContent, itemCount > 0 && { paddingBottom: 100 }]}
+        ref={scrollRef}
+        style={styles.container}
+        contentContainerStyle={[styles.contentContainer, itemCount > 0 && { paddingBottom: 110 }]}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -216,11 +202,113 @@ export default function CustomerMarketplaceScreen() {
           />
         }
       >
+        {/* Delivering To Bar */}
+        <View style={styles.locationBar}>
+          <View style={styles.locationInfo}>
+            <Text style={styles.locationLabel}>DELIVERING TO</Text>
+            <Text style={styles.locationText} numberOfLines={1}>
+              📍 {locationName}
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={styles.detectGpsBtn}
+            disabled={locating}
+            onPress={handleDetectGps}
+            activeOpacity={0.8}
+          >
+            {locating ? (
+              <ActivityIndicator size="small" color="#073f7c" />
+            ) : (
+              <Text style={styles.detectGpsText}>⚡ Detect GPS</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+
+        {/* Section Eyebrow & Headline from Original POC */}
+        <View style={styles.introHeader}>
+          <Text style={styles.eyebrow}>DISCOVER AROUND YOU</Text>
+          <Text style={styles.headline}>Shop local. Live better.</Text>
+        </View>
+
+        {/* Search Bar matching POC style */}
+        <View style={styles.searchBox}>
+          <Text style={styles.searchIcon}>⌕</Text>
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search food, groceries or stores..."
+            placeholderTextColor="#9db0c4"
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            returnKeyType="search"
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Text style={styles.clearSearch}>✕</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* Hero Card matching the authentic POC Gradient */}
+        <LinearGradient
+          colors={['#063f7d', '#079ce9']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.heroCard}
+        >
+          <Text style={styles.heroEyebrow}>ILKAL PILOT • LAUNCH PREVIEW</Text>
+          <Text style={styles.heroTitle}>Everything nearby,{"\n"}one simple app.</Text>
+          <Text style={styles.heroDesc}>
+            Find neighbourhood shops, choose delivery and pay only when arrangements are confirmed.
+          </Text>
+          <TouchableOpacity
+            style={styles.heroBtn}
+            activeOpacity={0.85}
+            onPress={handleHeroAction}
+          >
+            <Text style={styles.heroBtnText}>Try sample order →</Text>
+          </TouchableOpacity>
+        </LinearGradient>
+
+        {/* Explore Categories - Authentic 4-Grid from POC */}
+        <View style={styles.sectionTitleRow}>
+          <Text style={styles.sectionTitle}>Explore categories</Text>
+          <TouchableOpacity
+            onPress={() => setSelectedCategory('all')}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.sectionLink}>
+              {selectedCategory === 'all' ? 'All active' : 'View all'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.categoriesGrid}>
+          {CATEGORIES.map((cat) => {
+            const isSelected = selectedCategory === cat.id;
+            return (
+              <TouchableOpacity
+                key={cat.id}
+                style={[styles.categoryCard, isSelected && styles.categoryCardSelected]}
+                onPress={() => setSelectedCategory(isSelected ? 'all' : cat.id)}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.categoryIcon}>{cat.icon}</Text>
+                <Text
+                  style={[styles.categoryName, isSelected && styles.categoryNameSelected]}
+                  numberOfLines={1}
+                >
+                  {cat.name}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
         {/* Product Search Matches (if any) */}
         {productResults.length > 0 && (
           <View style={styles.productMatchSection}>
             <Text style={styles.sectionTitle}>Matching Items in Ilkal ({productResults.length})</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingVertical: 4 }}>
               {productResults.map((p) => (
                 <TouchableOpacity
                   key={p.id}
@@ -228,8 +316,8 @@ export default function CustomerMarketplaceScreen() {
                   activeOpacity={0.8}
                   onPress={() => router.push(`/(customer)/merchant/${p.merchant_id}` as any)}
                 >
-                  <Text style={styles.matchStoreName}>🏪 {p.business_name} ({p.distanceKm} km)</Text>
-                  <Text style={styles.matchProdName}>{p.name}</Text>
+                  <Text style={styles.matchStoreName} numberOfLines={1}>🏪 {p.business_name} ({p.distanceKm} km)</Text>
+                  <Text style={styles.matchProdName} numberOfLines={1}>{p.name}</Text>
                   <Text style={styles.matchPrice}>₹{p.price}</Text>
                 </TouchableOpacity>
               ))}
@@ -237,14 +325,21 @@ export default function CustomerMarketplaceScreen() {
           </View>
         )}
 
-        <Text style={styles.feedHeading}>
-          {searchQuery ? `Stores matching "${searchQuery}"` : 'Nearby Stores in Ilkal'}
-        </Text>
+        {/* Stores Near You Heading */}
+        <View style={styles.sectionTitleRow}>
+          <Text style={styles.sectionTitle}>
+            {searchQuery ? `Stores matching "${searchQuery}"` : 'Near you in Ilkal'}
+          </Text>
+          <Text style={styles.sectionBadge}>
+            {merchants.length} {merchants.length === 1 ? 'store' : 'stores'}
+          </Text>
+        </View>
 
+        {/* Store Cards Feed */}
         {loading ? (
           <View style={styles.centerContainer}>
-            <ActivityIndicator size="large" color={Colors.primary} />
-            <Text style={styles.loadingText}>Calculating nearby stores via Haversine...</Text>
+            <ActivityIndicator size="large" color="#073f7c" />
+            <Text style={styles.loadingText}>Locating neighbourhood stores in Ilkal...</Text>
           </View>
         ) : merchants.length === 0 ? (
           <View style={styles.centerContainer}>
@@ -255,59 +350,42 @@ export default function CustomerMarketplaceScreen() {
           merchants.map((merchant) => (
             <TouchableOpacity
               key={merchant.id}
-              style={styles.merchantCard}
-              activeOpacity={0.8}
+              style={styles.storeCard}
+              activeOpacity={0.82}
               onPress={() => router.push(`/(customer)/merchant/${merchant.id}` as any)}
             >
-              <View style={styles.cardTopRow}>
-                <View style={styles.storeIconBox}>
-                  <Text style={styles.storeIconText}>
-                    {merchant.category.includes('Food')
-                      ? '🍲'
-                      : merchant.category.includes('Saree')
-                      ? '🥻'
-                      : merchant.category.includes('Kirana')
-                      ? '🛒'
-                      : merchant.category.includes('Pharmacy')
-                      ? '💊'
-                      : '🏬'}
-                  </Text>
-                </View>
+              {/* Warm POC Store Icon (54x54, #fff2df, 12px border radius) */}
+              <View style={styles.storeIconBox}>
+                <Text style={styles.storeIconText}>{getStoreEmoji(merchant.category)}</Text>
+              </View>
 
-                <View style={styles.storeInfo}>
-                  <Text style={styles.businessName}>{merchant.business_name}</Text>
-                  <Text style={styles.categoryName}>{merchant.category}</Text>
-                  <Text style={styles.addressText} numberOfLines={1}>
-                    {merchant.address}
-                  </Text>
-                </View>
-
-                <View style={styles.ratingBadge}>
+              {/* Store Details */}
+              <View style={styles.storeBody}>
+                <View style={styles.storeTitleRow}>
+                  <Text style={styles.storeName}>{merchant.business_name}</Text>
                   <Text style={styles.ratingText}>★ {merchant.rating || '4.8'}</Text>
                 </View>
+                <Text style={styles.storeDesc} numberOfLines={1}>
+                  {merchant.category} • {merchant.address || 'Ilkal Main Road'}
+                </Text>
+                <View style={styles.tagRow}>
+                  <View style={styles.tagPill}>
+                    <Text style={styles.tagText}>
+                      {merchant.is_open ? 'Open • Delivery available' : 'Closed'}
+                    </Text>
+                  </View>
+                  <Text style={styles.distanceText}>• {merchant.distanceKm} km</Text>
+                </View>
               </View>
 
-              <View style={styles.cardMetaRow}>
-                <View style={styles.metaPill}>
-                  <Text style={styles.metaPillText}>📍 {merchant.distanceKm} km away</Text>
-                </View>
-                <View style={styles.metaPill}>
-                  <Text style={styles.metaPillText}>
-                    {merchant.own_delivery_enabled ? '🛵 Store Delivery' : '⚡ Platform Rider'}
-                  </Text>
-                </View>
-                <View style={[styles.metaPill, { backgroundColor: Colors.successLight }]}>
-                  <Text style={[styles.metaPillText, { color: Colors.success }]}>
-                    {merchant.is_open ? 'Open Now' : 'Closed'}
-                  </Text>
-                </View>
-              </View>
+              {/* POC Chevron */}
+              <Text style={styles.chevron}>›</Text>
             </TouchableOpacity>
           ))
         )}
       </ScrollView>
 
-      {/* Floating Bottom Cart Bar */}
+      {/* Floating Bottom Cart Bar matching POC */}
       {itemCount > 0 && (
         <View style={styles.floatingCartBar}>
           <View>
@@ -320,282 +398,405 @@ export default function CustomerMarketplaceScreen() {
           <TouchableOpacity
             style={styles.viewCartBtn}
             onPress={() => router.push('/(customer)/cart' as any)}
+            activeOpacity={0.85}
           >
             <Text style={styles.viewCartText}>View Cart & Checkout →</Text>
           </TouchableOpacity>
         </View>
       )}
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#ffffff',
+  },
   container: {
     flex: 1,
-    backgroundColor: Colors.background,
+    backgroundColor: '#f5f8fc',
+  },
+  contentContainer: {
+    padding: 16,
+    paddingTop: 12,
+  },
+  headerActionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  headerBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 8,
+    backgroundColor: '#f2f6fa',
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'relative',
+  },
+  headerBtnText: {
+    fontSize: 16,
+  },
+  badgeCount: {
+    position: 'absolute',
+    top: -3,
+    right: -3,
+    backgroundColor: '#ff8a16',
+    borderRadius: 10,
+    minWidth: 16,
+    height: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 3,
+  },
+  badgeCountText: {
+    color: '#ffffff',
+    fontSize: 9,
+    fontWeight: '800',
   },
   locationBar: {
-    backgroundColor: Colors.white,
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.md,
+    backgroundColor: '#ffffff',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
+    borderWidth: 1,
+    borderColor: '#dce6ef',
+    marginBottom: 14,
   },
   locationInfo: {
     flex: 1,
-    paddingRight: Spacing.sm,
+    paddingRight: 8,
   },
   locationLabel: {
-    ...Typography.caption,
-    color: Colors.textMuted,
+    fontSize: 10,
+    color: '#6f7f91',
     fontWeight: '700',
+    letterSpacing: 0.6,
   },
   locationText: {
-    ...Typography.bodyBold,
-    color: Colors.slate900,
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#142b46',
     marginTop: 2,
   },
-  changeLocBtn: {
-    backgroundColor: Colors.primaryTint,
-    paddingHorizontal: 12,
+  detectGpsBtn: {
+    backgroundColor: '#eef5fc',
+    paddingHorizontal: 10,
     paddingVertical: 6,
-    borderRadius: BorderRadius.full,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: Colors.primary,
+    borderColor: '#073f7c',
   },
-  changeLocText: {
-    ...Typography.caption,
-    color: Colors.primaryDark,
+  detectGpsText: {
+    fontSize: 11,
+    color: '#073f7c',
     fontWeight: '700',
   },
-  searchContainer: {
-    paddingHorizontal: Spacing.lg,
-    paddingTop: Spacing.md,
+  introHeader: {
+    marginBottom: 10,
+  },
+  eyebrow: {
+    fontSize: 11,
+    color: '#078ee8',
+    fontWeight: '900',
+    letterSpacing: 1.1,
+    textTransform: 'uppercase',
+  },
+  headline: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#142b46',
+    marginTop: 2,
   },
   searchBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.md,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    backgroundColor: '#fafcff',
+    borderRadius: 11,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: '#dce6ef',
+    marginBottom: 14,
   },
   searchIcon: {
-    fontSize: 16,
+    fontSize: 18,
+    color: '#6f7f91',
     marginRight: 8,
+    fontWeight: '600',
   },
   searchInput: {
     flex: 1,
-    ...Typography.subhead,
-    color: Colors.slate900,
+    fontSize: 14,
+    color: '#142b46',
   },
   clearSearch: {
     fontSize: 14,
-    color: Colors.textMuted,
+    color: '#6f7f91',
     paddingHorizontal: 4,
   },
-  categoryScroll: {
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.md,
-    gap: 8,
+  heroCard: {
+    padding: 19,
+    borderRadius: 17,
+    marginBottom: 18,
+    position: 'relative',
+    overflow: 'hidden',
   },
-  categoryChip: {
-    backgroundColor: Colors.white,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: BorderRadius.full,
-    borderWidth: 1,
-    borderColor: Colors.border,
+  heroEyebrow: {
+    fontSize: 10,
+    color: '#ffffff',
+    fontWeight: '800',
+    letterSpacing: 0.8,
+    opacity: 0.85,
+    textTransform: 'uppercase',
   },
-  categoryChipSelected: {
-    backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
-  },
-  categoryChipText: {
-    ...Typography.subhead,
-    color: Colors.slate700,
-    fontWeight: '500',
-  },
-  categoryChipTextSelected: {
-    color: Colors.white,
-    fontWeight: '700',
-  },
-  feedContent: {
-    padding: Spacing.lg,
-    paddingTop: Spacing.xs,
-    gap: Spacing.md,
-  },
-  productMatchSection: {
-    marginBottom: Spacing.md,
-  },
-  sectionTitle: {
-    ...Typography.subheadBold,
-    color: Colors.slate800,
+  heroTitle: {
+    fontSize: 23,
+    fontWeight: '800',
+    color: '#ffffff',
+    lineHeight: 28,
+    marginTop: 6,
     marginBottom: 8,
   },
-  productMatchCard: {
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.md,
-    padding: Spacing.md,
+  heroDesc: {
+    fontSize: 13,
+    color: '#ffffff',
+    opacity: 0.9,
+    lineHeight: 18,
+    marginBottom: 16,
+  },
+  heroBtn: {
+    backgroundColor: '#ff8a16',
+    paddingHorizontal: 16,
+    paddingVertical: 11,
+    borderRadius: 9,
+    alignSelf: 'flex-start',
+  },
+  heroBtnText: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  sectionTitleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+    marginBottom: 10,
+    marginTop: 6,
+  },
+  sectionTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#142b46',
+  },
+  sectionLink: {
+    fontSize: 11,
+    color: '#078ee8',
+    fontWeight: '700',
+  },
+  sectionBadge: {
+    fontSize: 11,
+    color: '#078ee8',
+    fontWeight: '700',
+  },
+  categoriesGrid: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 18,
+  },
+  categoryCard: {
+    flex: 1,
+    backgroundColor: '#f7faff',
     borderWidth: 1,
-    borderColor: Colors.primary,
+    borderColor: '#e8eff6',
+    borderRadius: 12,
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 2,
+  },
+  categoryCardSelected: {
+    backgroundColor: '#073f7c',
+    borderColor: '#073f7c',
+  },
+  categoryIcon: {
+    fontSize: 23,
+    marginBottom: 5,
+  },
+  categoryName: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#142b46',
+  },
+  categoryNameSelected: {
+    color: '#ffffff',
+  },
+  productMatchSection: {
+    marginBottom: 16,
+  },
+  productMatchCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 11,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#078ee8',
     width: 170,
   },
   matchStoreName: {
     fontSize: 11,
-    color: Colors.primaryDark,
+    color: '#073f7c',
     fontWeight: '600',
   },
   matchProdName: {
-    ...Typography.subheadBold,
-    color: Colors.slate900,
-    marginTop: 4,
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#142b46',
+    marginTop: 3,
   },
   matchPrice: {
-    ...Typography.subheadBold,
-    color: Colors.slate800,
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#142b46',
     marginTop: 2,
   },
-  feedHeading: {
-    ...Typography.title3,
-    color: Colors.slate900,
-    marginBottom: Spacing.xs,
+  storeCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#dce6ef',
+    padding: 13,
+    marginVertical: 5,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  storeIconBox: {
+    width: 54,
+    height: 54,
+    borderRadius: 12,
+    backgroundColor: '#fff2df',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  storeIconText: {
+    fontSize: 28,
+  },
+  storeBody: {
+    flex: 1,
+  },
+  storeTitleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  storeName: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#142b46',
+  },
+  ratingText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#a55a00',
+    backgroundColor: '#fff0da',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  storeDesc: {
+    fontSize: 11,
+    color: '#6f7f91',
+    lineHeight: 16,
+    marginTop: 2,
+  },
+  tagRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 4,
+  },
+  tagPill: {
+    backgroundColor: '#eaf8f2',
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 20,
+  },
+  tagText: {
+    color: '#08774c',
+    fontSize: 9,
+    fontWeight: '800',
+  },
+  distanceText: {
+    fontSize: 10,
+    color: '#6f7f91',
+    fontWeight: '500',
+  },
+  chevron: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#078ee8',
+    paddingHorizontal: 4,
   },
   centerContainer: {
     paddingVertical: 40,
     alignItems: 'center',
   },
   loadingText: {
-    ...Typography.subhead,
-    color: Colors.textMuted,
-    marginTop: 12,
+    fontSize: 13,
+    color: '#6f7f91',
+    marginTop: 10,
   },
   emptyTitle: {
-    ...Typography.title3,
-    color: Colors.slate700,
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#142b46',
   },
   emptySubtitle: {
-    ...Typography.subhead,
-    color: Colors.textMuted,
+    fontSize: 13,
+    color: '#6f7f91',
     marginTop: 4,
-  },
-  merchantCard: {
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.lg,
-    padding: Spacing.md,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    shadowColor: '#000',
-    shadowOpacity: 0.03,
-    shadowRadius: 5,
-    elevation: 1,
-  },
-  cardTopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  storeIconBox: {
-    width: 48,
-    height: 48,
-    borderRadius: BorderRadius.md,
-    backgroundColor: Colors.slate100,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: Spacing.md,
-  },
-  storeIconText: {
-    fontSize: 24,
-  },
-  storeInfo: {
-    flex: 1,
-  },
-  businessName: {
-    ...Typography.bodyBold,
-    color: Colors.slate900,
-    fontSize: 16,
-  },
-  categoryName: {
-    ...Typography.caption,
-    color: Colors.primaryDark,
-    fontWeight: '600',
-    marginTop: 2,
-  },
-  addressText: {
-    ...Typography.caption,
-    color: Colors.textMuted,
-    marginTop: 2,
-  },
-  ratingBadge: {
-    backgroundColor: Colors.secondaryLight,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: BorderRadius.sm,
-    alignSelf: 'flex-start',
-  },
-  ratingText: {
-    ...Typography.caption,
-    color: Colors.slate900,
-    fontWeight: '700',
-  },
-  cardMetaRow: {
-    flexDirection: 'row',
-    marginTop: Spacing.md,
-    paddingTop: Spacing.sm,
-    borderTopWidth: 1,
-    borderTopColor: Colors.slate100,
-    gap: 8,
-  },
-  metaPill: {
-    backgroundColor: Colors.slate100,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: BorderRadius.sm,
-  },
-  metaPillText: {
-    ...Typography.caption,
-    color: Colors.slate700,
   },
   floatingCartBar: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: Colors.slate900,
-    padding: Spacing.md,
-    paddingHorizontal: Spacing.lg,
+    backgroundColor: '#142b46',
+    padding: 14,
+    paddingHorizontal: 16,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    borderTopLeftRadius: BorderRadius.xl,
-    borderTopRightRadius: BorderRadius.xl,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
     shadowColor: '#000',
     shadowOpacity: 0.15,
     shadowRadius: 10,
     elevation: 8,
   },
   cartBarCount: {
-    ...Typography.caption,
-    color: Colors.slate300,
+    fontSize: 11,
+    color: '#c8d6e5',
     fontWeight: '600',
   },
   cartBarTotal: {
-    ...Typography.title3,
-    color: Colors.white,
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#ffffff',
     marginTop: 2,
   },
   viewCartBtn: {
-    backgroundColor: Colors.primary,
+    backgroundColor: '#ff8a16',
     paddingHorizontal: 16,
     paddingVertical: 10,
-    borderRadius: BorderRadius.md,
+    borderRadius: 9,
   },
   viewCartText: {
-    ...Typography.subheadBold,
-    color: Colors.white,
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#ffffff',
   },
 });

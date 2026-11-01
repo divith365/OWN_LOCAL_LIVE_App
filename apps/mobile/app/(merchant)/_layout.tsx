@@ -17,12 +17,7 @@ export default function MerchantLayout() {
       <Stack.Screen
         name="index"
         options={{
-          title: 'Merchant Command Center',
-          headerLeft: () => (
-            <TouchableOpacity onPress={() => router.replace('/')} style={{ marginRight: 12 }}>
-              <Text style={{ color: Colors.white, fontSize: 16, fontWeight: '600' }}>← Roles</Text>
-            </TouchableOpacity>
-          ),
+          headerShown: false,
         }}
       />
     </Stack>

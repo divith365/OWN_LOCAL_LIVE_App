@@ -14,8 +14,10 @@ import {
 } from 'react-native';
 import * as Location from 'expo-location';
 import { Colors, Spacing, BorderRadius, Typography, getOrderStatusConfig } from '@ownlocal/ui';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { apiClient } from '../../src/api';
 import { OrderStatus } from '@ownlocal/types';
+import { BrandHeader } from '../../src/components/BrandHeader';
 
 export default function RiderConsoleScreen() {
   const [rider, setRider] = useState<any>(null);
@@ -181,11 +183,13 @@ export default function RiderConsoleScreen() {
   const isEnRoute = activeJob?.status === 'OUT_FOR_DELIVERY';
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.content}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => fetchRiderData(true)} />}
-    >
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#ffffff' }} edges={['top', 'left', 'right']}>
+      <BrandHeader currentRole="rider" />
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.content}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => fetchRiderData(true)} />}
+      >
       {/* Rider Duty Profile Card */}
       <View style={styles.profileCard}>
         <View style={styles.profileRow}>
@@ -400,6 +404,7 @@ export default function RiderConsoleScreen() {
         ))
       )}
     </ScrollView>
+    </SafeAreaView>
   );
 }
 
