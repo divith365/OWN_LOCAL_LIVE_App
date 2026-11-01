@@ -904,7 +904,7 @@ app.post('/api/merchant/products/:id/toggle-stock', async (c) => {
   return c.json({ success: true, data: { product_id: productId, in_stock: body.in_stock } });
 });
 
-// Rider Console: Get Active Assignment, Available Jobs Pool, Metrics & Profile
+// Rider Console: Get Active Assignment, Available Jobs Pool (Filtered by Merchant-to-Rider distance), Metrics & Profile
 app.get('/api/rider/console', async (c) => {
   let riderId = c.req.query('rider_id') || 'rider_01';
 
@@ -927,9 +927,14 @@ app.get('/api/rider/console', async (c) => {
     .bind(riderId)
     .first();
 
+  const isApproved = rider ? rider.status === 'approved' : true;
+  const isOnline = rider ? Boolean(rider.online_status) : true;
+
   // Active assignment for this rider
   const activeJob: any = await c.env.DB.prepare(`
-    SELECT o.*, m.business_name as merchant_name, m.address as merchant_address, m.phone as merchant_phone
+    SELECT o.*, 
+      m.business_name as merchant_name, m.address as merchant_address, m.phone as merchant_phone,
+      m.latitude as merchant_latitude, m.longitude as merchant_longitude
     FROM orders o
     JOIN merchant_profiles m ON o.merchant_id = m.id
     WHERE o.rider_id = ? AND o.status IN ('RIDER_ASSIGNED', 'READY_FOR_PICKUP', 'PICKED_UP', 'OUT_FOR_DELIVERY')
@@ -945,15 +950,90 @@ app.get('/api/rider/console', async (c) => {
     activeJob.items = items || [];
   }
 
-  // Available jobs in pool (waiting for rider pickup in Ilkal)
-  const { results: availableJobs } = await c.env.DB.prepare(`
-    SELECT o.*, m.business_name as merchant_name, m.address as merchant_address
-    FROM orders o
-    JOIN merchant_profiles m ON o.merchant_id = m.id
-    WHERE o.rider_id IS NULL AND o.status IN ('READY_FOR_PICKUP', 'MERCHANT_CONFIRMED') AND o.delivery_type = 'PLATFORM_RIDER'
-    ORDER BY o.created_at ASC
-    LIMIT 10
-  `).all();
+  // Get Admin Platform Matching Radius from platform_settings (default 3.0 km)
+  const platformSettingRow: any = await c.env.DB.prepare(
+    "SELECT value FROM platform_settings WHERE key = 'platform_rider_matching_radius_km'"
+  ).first();
+  const platformMatchingRadius = platformSettingRow?.value ? parseFloat(platformSettingRow.value) : 3.0;
+
+  // Effective matching radius: Rider's customized preferred_radius_km takes precedence, falling back to Admin platform radius
+  const riderPreferredRadius = rider?.preferred_radius_km !== null && rider?.preferred_radius_km !== undefined
+    ? Number(rider.preferred_radius_km)
+    : null;
+  const effectiveRadiusKm = riderPreferredRadius !== null && !isNaN(riderPreferredRadius)
+    ? riderPreferredRadius
+    : platformMatchingRadius;
+
+  let availableJobs: any[] = [];
+  let offlineNotice: string | null = null;
+
+  if (!isOnline) {
+    offlineNotice = 'You are currently OFFLINE. Toggle duty ON to receive nearby store pickup jobs.';
+  } else {
+    // Rider GPS coordinates
+    const riderLat = rider?.current_latitude !== null && rider?.current_latitude !== undefined ? Number(rider.current_latitude) : null;
+    const riderLng = rider?.current_longitude !== null && rider?.current_longitude !== undefined ? Number(rider.current_longitude) : null;
+
+    // Fetch unassigned orders waiting for rider dispatch
+    const { results: unassignedOrders } = await c.env.DB.prepare(`
+      SELECT o.*, 
+        m.business_name as merchant_name, m.address as merchant_address, m.phone as merchant_phone,
+        m.latitude as merchant_latitude, m.longitude as merchant_longitude
+      FROM orders o
+      JOIN merchant_profiles m ON o.merchant_id = m.id
+      WHERE o.rider_id IS NULL 
+        AND o.status IN ('MERCHANT_CONFIRMED', 'RIDER_ASSIGNMENT_PENDING', 'READY_FOR_PICKUP') 
+        AND o.delivery_type = 'PLATFORM_RIDER'
+      ORDER BY o.created_at ASC
+      LIMIT 25
+    `).all();
+
+    if (unassignedOrders && unassignedOrders.length > 0) {
+      // Calculate Merchant-to-Rider distance for each unassigned order
+      for (const order of unassignedOrders as any[]) {
+        let pickupDistanceKm: number = 0.6;
+        let dropDistanceKm: number = 1.4;
+
+        if (riderLat !== null && riderLng !== null && order.merchant_latitude && order.merchant_longitude) {
+          pickupDistanceKm = calculateDistanceKm(
+            riderLat,
+            riderLng,
+            order.merchant_latitude,
+            order.merchant_longitude
+          );
+        }
+
+        if (order.merchant_latitude && order.merchant_longitude && order.delivery_latitude && order.delivery_longitude) {
+          dropDistanceKm = calculateDistanceKm(
+            order.merchant_latitude,
+            order.merchant_longitude,
+            order.delivery_latitude,
+            order.delivery_longitude
+          );
+        }
+
+        // Check if within matching radius: distance(Merchant pickup, Rider location) <= effectiveRadiusKm
+        if (pickupDistanceKm <= effectiveRadiusKm) {
+          // Fetch order items preview
+          const { results: items } = await c.env.DB.prepare('SELECT product_name, quantity FROM order_items WHERE order_id = ?')
+            .bind(order.id)
+            .all();
+          const itemsSummary = (items || []).map((it: any) => `${it.quantity}x ${it.product_name}`).join(', ');
+
+          availableJobs.push({
+            ...order,
+            pickup_distance_km: Number(pickupDistanceKm.toFixed(1)),
+            drop_distance_km: Number(dropDistanceKm.toFixed(1)),
+            items_summary: itemsSummary || 'Fresh store order parcel',
+            earnings: order.delivery_fee || 35,
+          });
+        }
+      }
+
+      // Sort by pickup distance ASC (closest merchant pickup first)
+      availableJobs.sort((a, b) => a.pickup_distance_km - b.pickup_distance_km);
+    }
+  }
 
   // Completed deliveries & earnings for rider
   const completedStats: any = await c.env.DB.prepare(`
@@ -973,19 +1053,28 @@ app.get('/api/rider/console', async (c) => {
         vehicle_type: 'bike',
         vehicle_number: 'KA-29-EE-4521',
         online_status: 1,
+        preferred_radius_km: 3.0,
       },
       activeJob: activeJob || null,
       availableJobs: availableJobs || [],
+      offline_notice: offlineNotice,
       metrics: {
         trips_today: completedStats?.count || 0,
         earnings_today: (completedStats?.count || 0) * 35, // ₹35 per delivery trip
         on_time_rate: '98%',
       },
+      dispatch_settings: {
+        effective_radius_km: effectiveRadiusKm,
+        rider_preferred_radius_km: riderPreferredRadius,
+        admin_platform_radius_km: platformMatchingRadius,
+        is_online: isOnline,
+        is_approved: isApproved,
+      },
     },
   });
 });
 
-// Rider: Accept Order From Available Pool
+// Rider: Accept Order From Available Pool (Atomic Claim)
 app.post('/api/rider/accept-job', async (c) => {
   const body = await c.req.json<{ order_id: string; rider_id?: string }>();
   let riderId = body.rider_id || 'rider_01';
@@ -1012,12 +1101,24 @@ app.post('/api/rider/accept-job', async (c) => {
   }
 
   if (order.rider_id && order.rider_id !== riderId) {
-    return c.json({ success: false, error: { code: 'ALREADY_ASSIGNED', message: 'Order already claimed by another rider' } }, 400);
+    return c.json({ success: false, error: { code: 'ALREADY_ASSIGNED', message: 'This job was just claimed by another rider!' } }, 409);
   }
 
-  await c.env.DB.prepare('UPDATE orders SET rider_id = ?, status = "RIDER_ASSIGNED", updated_at = datetime("now") WHERE id = ?')
-    .bind(riderId, body.order_id)
+  // Atomic UPDATE: only updates if order has no rider or already this rider
+  const updateResult = await c.env.DB.prepare(`
+    UPDATE orders 
+    SET rider_id = ?, status = 'RIDER_ASSIGNED', updated_at = datetime('now') 
+    WHERE id = ? AND (rider_id IS NULL OR rider_id = ?)
+  `)
+    .bind(riderId, body.order_id, riderId)
     .run();
+
+  if (updateResult.meta.changes === 0) {
+    return c.json({
+      success: false,
+      error: { code: 'ALREADY_CLAIMED', message: 'This delivery job was just accepted by another nearby rider.' },
+    }, 409);
+  }
 
   await c.env.DB.prepare(
     'INSERT INTO order_status_history (id, order_id, from_status, to_status, notes) VALUES (?, ?, ?, ?, ?)'
@@ -1053,6 +1154,45 @@ app.post('/api/rider/pickup-job', async (c) => {
   return c.json({ success: true, data: { order_id: body.order_id, status: 'OUT_FOR_DELIVERY' } });
 });
 
+// Rider: Configure Preferred Pickup / Dispatch Radius
+app.post('/api/rider/settings', async (c) => {
+  const body = await c.req.json<{ rider_id?: string; preferred_radius_km: number }>();
+  let riderId = body.rider_id || 'rider_01';
+
+  const authHeader = c.req.header('Authorization');
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.substring(7);
+    const jwtSecret = c.env.JWT_SECRET || 'ownlocal_live_super_secret_jwt_key_2026_ilkal_pilot';
+    const decoded = await verifyJwt<{ userId: string }>(token, jwtSecret);
+    if (decoded.valid && decoded.payload?.userId) {
+      const riderByUser: any = await c.env.DB.prepare('SELECT id FROM rider_profiles WHERE user_id = ?')
+        .bind(decoded.payload.userId)
+        .first();
+      if (riderByUser) riderId = riderByUser.id;
+    }
+  }
+
+  const radius = Math.max(0.5, Math.min(30, Number(body.preferred_radius_km || 3.0)));
+
+  await c.env.DB.prepare('UPDATE rider_profiles SET preferred_radius_km = ? WHERE id = ?')
+    .bind(radius, riderId)
+    .run();
+
+  const updatedRider: any = await c.env.DB.prepare('SELECT * FROM rider_profiles WHERE id = ?')
+    .bind(riderId)
+    .first();
+
+  return c.json({
+    success: true,
+    data: {
+      rider_id: riderId,
+      preferred_radius_km: radius,
+      rider: updatedRider,
+    },
+    message: `Preferred pickup radius set to ${radius} km`,
+  });
+});
+
 // Rider: Toggle Duty Online / Offline
 app.post('/api/rider/toggle-duty', async (c) => {
   const body = await c.req.json<{ online: boolean; rider_id?: string }>();
@@ -1067,7 +1207,7 @@ app.post('/api/rider/toggle-duty', async (c) => {
 
 // Rider: Real-Time GPS Location Ping
 app.post('/api/rider/location', async (c) => {
-  const body = await c.req.json<{ latitude: number; longitude: number; rider_id?: string }>();
+  const body = await c.req.json<{ latitude: number; longitude: number; rider_id?: string; heading?: number; speed?: number }>();
   let riderId = body.rider_id || 'rider_01';
 
   await c.env.DB.prepare(
@@ -1075,6 +1215,19 @@ app.post('/api/rider/location', async (c) => {
   )
     .bind(body.latitude, body.longitude, riderId)
     .run();
+
+  // Log in rider_locations for tracking trail
+  const locId = `loc_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+  try {
+    await c.env.DB.prepare(`
+      INSERT INTO rider_locations (id, rider_id, latitude, longitude, heading, speed)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `)
+      .bind(locId, riderId, body.latitude, body.longitude, body.heading || null, body.speed || null)
+      .run();
+  } catch (err) {
+    // Non-fatal if location history insert fails
+  }
 
   return c.json({ success: true, data: { rider_id: riderId, latitude: body.latitude, longitude: body.longitude } });
 });
@@ -1153,6 +1306,56 @@ app.get('/api/admin/orders', async (c) => {
   `).all();
 
   return c.json({ success: true, data: orders || [] });
+});
+
+// Admin: Get Platform Operations Settings (e.g. platform rider matching radius)
+app.get('/api/admin/settings', async (c) => {
+  const { results: settingsRows } = await c.env.DB.prepare('SELECT * FROM platform_settings').all();
+
+  const settings: Record<string, any> = {};
+  for (const row of (settingsRows || []) as any[]) {
+    settings[row.key] = row.value;
+  }
+
+  const matchingRadius = settings['platform_rider_matching_radius_km']
+    ? parseFloat(settings['platform_rider_matching_radius_km'])
+    : 3.0;
+
+  return c.json({
+    success: true,
+    data: {
+      platform_rider_matching_radius_km: matchingRadius,
+      settings,
+    },
+  });
+});
+
+// Admin: Update Platform Operations Settings
+app.post('/api/admin/settings', async (c) => {
+  const body = await c.req.json<{ platform_rider_matching_radius_km?: number }>();
+
+  if (body.platform_rider_matching_radius_km !== undefined) {
+    const radius = Math.max(0.5, Math.min(30, Number(body.platform_rider_matching_radius_km)));
+    await c.env.DB.prepare(`
+      INSERT INTO platform_settings (key, value, description, updated_at)
+      VALUES ('platform_rider_matching_radius_km', ?, 'Default platform matching radius in km between Merchant pickup location and Rider current GPS location', datetime('now'))
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+    `)
+      .bind(String(radius))
+      .run();
+  }
+
+  const updatedSetting: any = await c.env.DB.prepare(
+    "SELECT value FROM platform_settings WHERE key = 'platform_rider_matching_radius_km'"
+  ).first();
+
+  return c.json({
+    success: true,
+    data: {
+      platform_rider_matching_radius_km: updatedSetting?.value ? parseFloat(updatedSetting.value) : 3.0,
+    },
+    message: 'Platform settings updated successfully',
+  });
 });
 
 // --- 9. Cloudflare R2 Media Storage Routes ---

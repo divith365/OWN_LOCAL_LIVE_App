@@ -29,6 +29,9 @@ export default function RiderConsoleScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
+  const [savingRadius, setSavingRadius] = useState(false);
+  const [gpsRefreshing, setGpsRefreshing] = useState(false);
+  const [preferredRadius, setPreferredRadius] = useState<number>(3.0);
   const [gpsCoords, setGpsCoords] = useState<{ lat: number; lng: number }>({ lat: 15.9585, lng: 76.126 });
 
   const pollTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -43,6 +46,11 @@ export default function RiderConsoleScreen() {
         setAvailableJobs(res.data.availableJobs || []);
         if (res.data.metrics) setMetrics(res.data.metrics);
         setIsOnline(Boolean(res.data.rider?.online_status));
+        if (res.data.rider?.preferred_radius_km) {
+          setPreferredRadius(Number(res.data.rider.preferred_radius_km));
+        } else if (res.data.dispatch_settings?.rider_preferred_radius_km) {
+          setPreferredRadius(Number(res.data.dispatch_settings.rider_preferred_radius_km));
+        }
       }
     } catch (e) {
       console.error('Failed to fetch rider console', e);
@@ -67,6 +75,50 @@ export default function RiderConsoleScreen() {
       }
     })();
   }, []);
+
+  const handleRefreshGps = async () => {
+    setGpsRefreshing(true);
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Needed', 'Please allow location permission to update your GPS position.');
+        return;
+      }
+      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+      setGpsCoords({ lat: loc.coords.latitude, lng: loc.coords.longitude });
+      await apiClient.riderUpdateLocation(loc.coords.latitude, loc.coords.longitude, rider?.id || 'rider_01');
+      Alert.alert(
+        'GPS Position Refreshed! 📍',
+        `Coordinates: ${loc.coords.latitude.toFixed(4)}° N, ${loc.coords.longitude.toFixed(4)}° E.\nNearby pickup orders updated for your location.`
+      );
+      fetchRiderData(false);
+    } catch (err: any) {
+      Alert.alert('GPS Error', err?.message || 'Could not fetch current GPS coordinates.');
+    } finally {
+      setGpsRefreshing(false);
+    }
+  };
+
+  const handleSelectRadius = async (radiusKm: number) => {
+    setPreferredRadius(radiusKm);
+    setSavingRadius(true);
+    try {
+      const res = await apiClient.updateRiderSettings(radiusKm, rider?.id || 'rider_01');
+      if (res.success) {
+        Alert.alert(
+          'Preferred Radius Updated! 🛵',
+          `You will now receive order pickup offers from merchants within ${radiusKm} km of your GPS location.`
+        );
+        fetchRiderData(false);
+      } else {
+        Alert.alert('Error', res.error?.message || 'Could not update dispatch radius.');
+      }
+    } catch (err: any) {
+      Alert.alert('Network Error', err?.message || 'Failed to save radius preference.');
+    } finally {
+      setSavingRadius(false);
+    }
+  };
 
   useEffect(() => {
     fetchRiderData(false);
@@ -198,9 +250,22 @@ export default function RiderConsoleScreen() {
             <Text style={styles.vehicleInfo}>
               🛵 {rider?.vehicle_number || 'KA-29-EE-4521'} • {rider?.vehicle_type || 'bike'}
             </Text>
-            <Text style={styles.gpsCoord}>
-              📍 GPS: {gpsCoords.lat.toFixed(4)}° N, {gpsCoords.lng.toFixed(4)}° E (Ilkal)
-            </Text>
+            <View style={styles.gpsRow}>
+              <Text style={styles.gpsCoord}>
+                📍 {gpsCoords.lat.toFixed(4)}° N, {gpsCoords.lng.toFixed(4)}° E
+              </Text>
+              <TouchableOpacity
+                style={styles.gpsSyncBtn}
+                disabled={gpsRefreshing}
+                onPress={handleRefreshGps}
+              >
+                {gpsRefreshing ? (
+                  <ActivityIndicator size="small" color="#0369a1" />
+                ) : (
+                  <Text style={styles.gpsSyncText}>🔄 Refresh GPS</Text>
+                )}
+              </TouchableOpacity>
+            </View>
           </View>
 
           <View style={styles.dutyBox}>
@@ -213,6 +278,33 @@ export default function RiderConsoleScreen() {
               trackColor={{ false: Colors.slate300, true: Colors.successLight }}
               thumbColor={isOnline ? Colors.success : Colors.slate400}
             />
+          </View>
+        </View>
+
+        {/* Operating Dispatch Radius Customizer (Rider Choice) */}
+        <View style={styles.radiusBox}>
+          <View style={styles.radiusHeader}>
+            <Text style={styles.radiusTitle}>🛵 Preferred Pickup Radius</Text>
+            <View style={styles.radiusBadge}>
+              <Text style={styles.radiusBadgeText}>{preferredRadius} km</Text>
+            </View>
+          </View>
+          <Text style={styles.radiusHelp}>
+            Matching store pickups within {preferredRadius} km of your GPS location
+          </Text>
+          <View style={styles.radiusChips}>
+            {[2, 3, 5, 8, 10].map((km) => (
+              <TouchableOpacity
+                key={km}
+                style={[styles.radiusChip, preferredRadius === km && styles.radiusChipActive]}
+                disabled={savingRadius}
+                onPress={() => handleSelectRadius(km)}
+              >
+                <Text style={[styles.radiusChipText, preferredRadius === km && styles.radiusChipTextActive]}>
+                  {km} km
+                </Text>
+              </TouchableOpacity>
+            ))}
           </View>
         </View>
 
@@ -232,6 +324,19 @@ export default function RiderConsoleScreen() {
           </View>
         </View>
       </View>
+
+      {/* Offline Alert Banner */}
+      {!isOnline && (
+        <View style={styles.offlineAlert}>
+          <Text style={styles.offlineAlertIcon}>⚠️</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.offlineAlertTitle}>You are currently OFFLINE</Text>
+            <Text style={styles.offlineAlertSub}>
+              Switch ON DUTY above to receive orders matching within {preferredRadius} km of your location.
+            </Text>
+          </View>
+        </View>
+      )}
 
       {/* Active Trip Assignment Section */}
       <Text style={styles.sectionHeading}>Current Trip Assignment</Text>
@@ -359,40 +464,56 @@ export default function RiderConsoleScreen() {
           <Text style={styles.noJobEmoji}>🛵</Text>
           <Text style={styles.noJobTitle}>No Active Delivery Right Now</Text>
           <Text style={styles.noJobSub}>
-            Check available orders in Ilkal below to accept a new delivery job!
+            Check available orders within your {preferredRadius} km radius below!
           </Text>
         </View>
       )}
 
       {/* Available Delivery Jobs in Ilkal */}
       <Text style={styles.sectionHeading}>
-        Available Jobs in Town ({availableJobs.length})
+        Available Jobs in Your Area ({availableJobs.length})
       </Text>
 
       {availableJobs.length === 0 ? (
         <View style={styles.emptyPoolBox}>
           <Text style={styles.emptyPoolText}>
-            No unassigned delivery orders currently in Ilkal. New jobs will appear here in real-time.
+            {isOnline
+              ? `No unassigned orders found within ${preferredRadius} km of your GPS location. New jobs will appear here in real-time.`
+              : 'You are currently offline. Switch on duty to view available pickup offers.'}
           </Text>
         </View>
       ) : (
         availableJobs.map((job) => (
           <View key={job.id} style={styles.poolCard}>
             <View style={styles.poolTopRow}>
-              <View>
+              <View style={{ flex: 1 }}>
                 <Text style={styles.poolStoreName}>{job.merchant_name}</Text>
-                <Text style={styles.poolOrderNumber}>{job.order_number}</Text>
+                <Text style={styles.poolOrderNumber}>Order #{job.order_number}</Text>
               </View>
               <View style={styles.payoutBadge}>
-                <Text style={styles.payoutBadgeText}>Earn ₹35</Text>
+                <Text style={styles.payoutBadgeText}>Earn ₹{job.earnings || 35}</Text>
               </View>
             </View>
 
-            <Text style={styles.poolAddress}>📍 Store: {job.merchant_address}</Text>
+            {/* Distance Indicators (Merchant-to-Rider & Merchant-to-Customer) */}
+            <View style={styles.distanceRow}>
+              <View style={styles.distPillStore}>
+                <Text style={styles.distPillStoreText}>📍 {job.pickup_distance_km ?? 0.6} km to pickup</Text>
+              </View>
+              <View style={styles.distPillDrop}>
+                <Text style={styles.distPillDropText}>🏁 {job.drop_distance_km ?? 1.4} km to drop</Text>
+              </View>
+            </View>
+
+            <Text style={styles.poolAddress}>🏬 Store: {job.merchant_address}</Text>
             <Text style={styles.poolAddress}>🏠 Drop: {job.delivery_address}</Text>
 
+            {job.items_summary && (
+              <Text style={styles.poolItems}>🛍️ {job.items_summary}</Text>
+            )}
+
             <TouchableOpacity
-              style={styles.claimBtn}
+              style={[styles.claimBtn, !isOnline && styles.claimBtnDisabled]}
               disabled={actionLoading || !isOnline}
               onPress={() => handleAcceptJob(job.id)}
             >
@@ -708,5 +829,149 @@ const styles = StyleSheet.create({
   claimBtnText: {
     ...Typography.bodyBold,
     color: Colors.white,
+  },
+  claimBtnDisabled: {
+    backgroundColor: Colors.slate400,
+  },
+  gpsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 4,
+    flexWrap: 'wrap',
+  },
+  gpsSyncBtn: {
+    backgroundColor: '#f0f9ff',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
+    borderColor: '#bae6fd',
+  },
+  gpsSyncText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#0369a1',
+  },
+  radiusBox: {
+    backgroundColor: '#f8fafc',
+    borderRadius: BorderRadius.md,
+    padding: Spacing.md,
+    marginTop: Spacing.md,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  radiusHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  radiusTitle: {
+    ...Typography.captionBold,
+    color: Colors.slate900,
+  },
+  radiusBadge: {
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: BorderRadius.full,
+  },
+  radiusBadgeText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: Colors.white,
+  },
+  radiusHelp: {
+    fontSize: 11,
+    color: Colors.textMuted,
+    marginTop: 2,
+    marginBottom: Spacing.sm,
+  },
+  radiusChips: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  radiusChip: {
+    flex: 1,
+    paddingVertical: 6,
+    borderRadius: BorderRadius.sm,
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    alignItems: 'center',
+  },
+  radiusChipActive: {
+    backgroundColor: Colors.slate900,
+    borderColor: Colors.slate900,
+  },
+  radiusChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.slate700,
+  },
+  radiusChipTextActive: {
+    color: Colors.white,
+    fontWeight: '800',
+  },
+  offlineAlert: {
+    backgroundColor: '#fffbeb',
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: '#fcd34d',
+    padding: Spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  offlineAlertIcon: {
+    fontSize: 22,
+  },
+  offlineAlertTitle: {
+    ...Typography.captionBold,
+    color: '#92400e',
+  },
+  offlineAlertSub: {
+    fontSize: 11,
+    color: '#b45309',
+    marginTop: 2,
+  },
+  distanceRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 6,
+    marginBottom: 4,
+    flexWrap: 'wrap',
+  },
+  distPillStore: {
+    backgroundColor: '#ecfdf5',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
+    borderColor: '#a7f3d0',
+  },
+  distPillStoreText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#065f46',
+  },
+  distPillDrop: {
+    backgroundColor: '#eff6ff',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+  },
+  distPillDropText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#1e40af',
+  },
+  poolItems: {
+    ...Typography.caption,
+    color: Colors.slate600,
+    marginTop: 4,
+    fontStyle: 'italic',
   },
 });

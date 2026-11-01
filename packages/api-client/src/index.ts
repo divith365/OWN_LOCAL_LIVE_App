@@ -255,7 +255,20 @@ export class OwnlocalApiClient {
     });
   }
 
-  async getRiderConsole(riderId?: string): Promise<ApiResponse<{ rider: any; activeJob: any; availableJobs: any[]; metrics: any }>> {
+  async getRiderConsole(riderId?: string): Promise<ApiResponse<{
+    rider: any;
+    activeJob: any;
+    availableJobs: any[];
+    metrics: any;
+    dispatch_settings?: {
+      effective_radius_km: number;
+      rider_preferred_radius_km?: number | null;
+      admin_platform_radius_km: number;
+      is_online: boolean;
+      is_approved: boolean;
+    };
+    offline_notice?: string | null;
+  }>> {
     const query = riderId ? `?rider_id=${riderId}` : '';
     return this.request(`/api/rider/console${query}`);
   }
@@ -285,6 +298,24 @@ export class OwnlocalApiClient {
     return this.request('/api/rider/location', {
       method: 'POST',
       body: JSON.stringify({ latitude, longitude, rider_id: riderId }),
+    });
+  }
+
+  async updateRiderSettings(preferredRadiusKm: number, riderId?: string): Promise<ApiResponse<any>> {
+    return this.request('/api/rider/settings', {
+      method: 'POST',
+      body: JSON.stringify({ preferred_radius_km: preferredRadiusKm, rider_id: riderId }),
+    });
+  }
+
+  async getPlatformSettings(): Promise<ApiResponse<{ platform_rider_matching_radius_km: number; settings: Record<string, any> }>> {
+    return this.request('/api/admin/settings');
+  }
+
+  async updatePlatformSettings(settings: { platform_rider_matching_radius_km?: number }): Promise<ApiResponse<{ platform_rider_matching_radius_km: number }>> {
+    return this.request('/api/admin/settings', {
+      method: 'POST',
+      body: JSON.stringify(settings),
     });
   }
 

@@ -82,8 +82,15 @@ export interface RiderProfile {
   online_status: boolean;
   current_latitude?: number | null;
   current_longitude?: number | null;
+  preferred_radius_km?: number;
   last_location_update?: string | null;
   created_at: string;
+}
+
+// Platform Operations Settings
+export interface PlatformSettings {
+  platform_rider_matching_radius_km: number;
+  [key: string]: any;
 }
 
 // Product & Catalog

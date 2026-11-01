@@ -42,6 +42,8 @@ export default function AdminDashboardScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'METRICS' | 'MERCHANTS' | 'RIDERS' | 'ORDERS'>('METRICS');
+  const [platformRadius, setPlatformRadius] = useState<number>(3.0);
+  const [savingPlatformRadius, setSavingPlatformRadius] = useState<boolean>(false);
 
   // Add Merchant Modal state with GPS Auto-Pick
   const [showAddModal, setShowAddModal] = useState(false);
@@ -134,17 +136,21 @@ export default function AdminDashboardScreen() {
   const fetchAdminData = useCallback(async (isManual = false) => {
     if (isManual) setRefreshing(true);
     try {
-      const [mRes, merchRes, riderRes, orderRes] = await Promise.all([
+      const [mRes, merchRes, riderRes, orderRes, settingsRes] = await Promise.all([
         apiClient.getAdminMetrics(),
         apiClient.getAdminMerchants(),
         apiClient.getAdminRiders(),
         apiClient.getAdminOrders(),
+        apiClient.getPlatformSettings(),
       ]);
 
       if (mRes.success && mRes.data) setMetrics(mRes.data);
       if (merchRes.success && merchRes.data) setMerchants(merchRes.data);
       if (riderRes.success && riderRes.data) setRiders(riderRes.data);
       if (orderRes.success && orderRes.data) setOrders(orderRes.data);
+      if (settingsRes.success && settingsRes.data?.platform_rider_matching_radius_km) {
+        setPlatformRadius(settingsRes.data.platform_rider_matching_radius_km);
+      }
     } catch (e) {
       console.error('Failed to fetch admin data', e);
     } finally {
@@ -152,6 +158,26 @@ export default function AdminDashboardScreen() {
       setRefreshing(false);
     }
   }, []);
+
+  const handleSavePlatformRadius = async (newRadius: number) => {
+    setPlatformRadius(newRadius);
+    setSavingPlatformRadius(true);
+    try {
+      const res = await apiClient.updatePlatformSettings({ platform_rider_matching_radius_km: newRadius });
+      if (res.success) {
+        Alert.alert(
+          'Platform Settings Updated! 🛡️',
+          `Town rider matching radius set to ${newRadius} km.\nEligible riders within this distance from merchant pickup will receive job offers.`
+        );
+      } else {
+        Alert.alert('Error', res.error?.message || 'Could not save platform settings');
+      }
+    } catch (e: any) {
+      Alert.alert('Error', e?.message || 'Network error');
+    } finally {
+      setSavingPlatformRadius(false);
+    }
+  };
 
   useEffect(() => {
     fetchAdminData(false);
@@ -543,7 +569,35 @@ export default function AdminDashboardScreen() {
       {/* Tab: Riders Directory & Duty Status */}
       {activeTab === 'RIDERS' && (
         <View style={styles.sectionCol}>
-          <Text style={styles.sectionHeading}>Rider Fleet Directory</Text>
+          {/* Global Dispatch Radius Configurator */}
+          <View style={styles.dispatchSettingsCard}>
+            <View style={styles.dispatchHeaderRow}>
+              <Text style={styles.dispatchTitle}>🛡️ Platform Rider Matching Radius</Text>
+              <View style={styles.dispatchRadiusBadge}>
+                <Text style={styles.dispatchRadiusBadgeText}>{platformRadius} km Default</Text>
+              </View>
+            </View>
+            <Text style={styles.dispatchSub}>
+              Maximum pickup distance from merchant shop to rider current GPS location. When a store confirms an order, riders within this radius receive job offers.
+            </Text>
+
+            <View style={styles.radiusSelectorRow}>
+              {[2, 3, 4, 5, 8, 10].map((km) => (
+                <TouchableOpacity
+                  key={km}
+                  style={[styles.radiusChip, platformRadius === km && styles.radiusChipActive]}
+                  disabled={savingPlatformRadius}
+                  onPress={() => handleSavePlatformRadius(km)}
+                >
+                  <Text style={[styles.radiusChipText, platformRadius === km && styles.radiusChipTextActive]}>
+                    {km} km
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          <Text style={styles.sectionHeading}>Rider Fleet Directory ({riders.length})</Text>
 
           {riders.map((r) => {
             const isApproved = r.status === 'approved';
@@ -559,6 +613,12 @@ export default function AdminDashboardScreen() {
                       🛵 {r.vehicle_number} • {r.vehicle_type?.toUpperCase()}
                     </Text>
                     <Text style={styles.itemMeta}>📞 {r.phone}</Text>
+                    <Text style={styles.riderRadiusMeta}>
+                      🎯 Operating Radius: {r.preferred_radius_km ? `${r.preferred_radius_km} km (Rider Choice)` : `Default (${platformRadius} km)`}
+                    </Text>
+                    <Text style={styles.riderGpsMeta}>
+                      📍 Last GPS: {r.current_latitude && r.current_longitude ? `${r.current_latitude.toFixed(4)}° N, ${r.current_longitude.toFixed(4)}° E` : 'Pending GPS report'}
+                    </Text>
                   </View>
 
                   <View style={{ alignItems: 'flex-end', gap: 4 }}>
@@ -1152,5 +1212,77 @@ const styles = StyleSheet.create({
   modalSubmitText: {
     ...Typography.bodyBold,
     color: Colors.white,
+  },
+  dispatchSettingsCard: {
+    backgroundColor: '#f8fafc',
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.lg,
+    borderWidth: 1.5,
+    borderColor: '#cbd5e1',
+    marginBottom: Spacing.sm,
+  },
+  dispatchHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  dispatchTitle: {
+    ...Typography.bodyBold,
+    color: Colors.slate900,
+    fontWeight: '800',
+  },
+  dispatchRadiusBadge: {
+    backgroundColor: Colors.slate900,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: BorderRadius.full,
+  },
+  dispatchRadiusBadgeText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: Colors.white,
+  },
+  dispatchSub: {
+    fontSize: 12,
+    color: Colors.textMuted,
+    lineHeight: 17,
+    marginTop: 6,
+    marginBottom: Spacing.md,
+  },
+  radiusSelectorRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  radiusChip: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: BorderRadius.sm,
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    alignItems: 'center',
+  },
+  radiusChipActive: {
+    backgroundColor: Colors.slate900,
+    borderColor: Colors.slate900,
+  },
+  radiusChipText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.slate700,
+  },
+  radiusChipTextActive: {
+    color: Colors.white,
+    fontWeight: '800',
+  },
+  riderRadiusMeta: {
+    ...Typography.captionBold,
+    color: '#0369a1',
+    marginTop: 3,
+  },
+  riderGpsMeta: {
+    ...Typography.caption,
+    color: Colors.slate500,
+    marginTop: 2,
   },
 });
