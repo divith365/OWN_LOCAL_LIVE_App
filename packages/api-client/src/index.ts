@@ -192,8 +192,23 @@ export class OwnlocalApiClient {
   }
 
   // RBAC Protected Role Endpoints
-  async getMerchantDashboard(): Promise<ApiResponse<{ merchant: any; orders: any[] }>> {
-    return this.request('/api/merchant/dashboard');
+  async getMerchantDashboard(merchantId?: string): Promise<ApiResponse<{ merchant: any; orders: any[]; metrics: any }>> {
+    const query = merchantId ? `?merchant_id=${merchantId}` : '';
+    return this.request(`/api/merchant/dashboard${query}`);
+  }
+
+  async toggleMerchantOpen(isOpen: boolean, merchantId?: string): Promise<ApiResponse<any>> {
+    return this.request('/api/merchant/toggle-open', {
+      method: 'POST',
+      body: JSON.stringify({ is_open: isOpen, merchant_id: merchantId }),
+    });
+  }
+
+  async toggleProductStock(productId: string, inStock: boolean): Promise<ApiResponse<any>> {
+    return this.request(`/api/merchant/products/${productId}/toggle-stock`, {
+      method: 'POST',
+      body: JSON.stringify({ in_stock: inStock }),
+    });
   }
 
   async getRiderActiveJob(): Promise<ApiResponse<{ rider: any; activeJob: any }>> {
