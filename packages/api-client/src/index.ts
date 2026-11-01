@@ -1,6 +1,7 @@
 import {
   ApiResponse,
   MerchantProfile,
+  RiderProfile,
   Product,
   Order,
   UserRole,
@@ -246,5 +247,31 @@ export class OwnlocalApiClient {
 
   async getAdminMetrics(): Promise<ApiResponse<any>> {
     return this.request('/api/admin/metrics');
+  }
+
+  async getAdminMerchants(): Promise<ApiResponse<MerchantProfile[]>> {
+    return this.request('/api/admin/merchants');
+  }
+
+  async updateAdminMerchantStatus(id: string, status: string): Promise<ApiResponse<any>> {
+    return this.request(`/api/admin/merchants/${id}/status`, {
+      method: 'POST',
+      body: JSON.stringify({ status }),
+    });
+  }
+
+  async getAdminRiders(): Promise<ApiResponse<RiderProfile[]>> {
+    return this.request('/api/admin/riders');
+  }
+
+  async updateAdminRiderStatus(id: string, status: string): Promise<ApiResponse<any>> {
+    return this.request(`/api/admin/riders/${id}/status`, {
+      method: 'POST',
+      body: JSON.stringify({ status }),
+    });
+  }
+
+  async getAdminOrders(): Promise<ApiResponse<any[]>> {
+    return this.request('/api/admin/orders');
   }
 }

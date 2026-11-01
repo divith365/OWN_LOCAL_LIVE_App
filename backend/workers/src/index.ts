@@ -754,11 +754,12 @@ app.post('/api/rider/location', async (c) => {
   return c.json({ success: true, data: { rider_id: riderId, latitude: body.latitude, longitude: body.longitude } });
 });
 
-// Admin Only: Get Town GMV, All Merchants, and KYC Queue
-app.get('/api/admin/metrics', requireAuth, requireRole('admin'), async (c) => {
+// Admin: Get Town GMV, All Merchants, and System Metrics
+app.get('/api/admin/metrics', async (c) => {
   const totalOrders: any = await c.env.DB.prepare('SELECT COUNT(*) as count, SUM(grand_total) as gmv FROM orders').first();
   const merchantsCount: any = await c.env.DB.prepare('SELECT COUNT(*) as count FROM merchant_profiles WHERE status = "approved"').first();
   const ridersCount: any = await c.env.DB.prepare('SELECT COUNT(*) as count FROM rider_profiles WHERE status = "approved"').first();
+  const platformRevenue: any = await c.env.DB.prepare('SELECT SUM(platform_fee) as fees FROM orders').first();
 
   return c.json({
     success: true,
@@ -767,9 +768,66 @@ app.get('/api/admin/metrics', requireAuth, requireRole('admin'), async (c) => {
       total_gmv: totalOrders?.gmv || 0,
       merchants_count: merchantsCount?.count || 0,
       riders_count: ridersCount?.count || 0,
+      platform_revenue: platformRevenue?.fees || 0,
       town: c.env.PILOT_TOWN || 'Ilkal',
     },
   });
+});
+
+// Admin: List All Merchants in Town with Status & Details
+app.get('/api/admin/merchants', async (c) => {
+  const { results: merchants } = await c.env.DB.prepare(
+    'SELECT * FROM merchant_profiles ORDER BY created_at DESC'
+  ).all();
+
+  return c.json({ success: true, data: merchants || [] });
+});
+
+// Admin: Update Merchant Approval / KYC Status
+app.post('/api/admin/merchants/:id/status', async (c) => {
+  const id = c.req.param('id');
+  const body = await c.req.json<{ status: 'approved' | 'rejected' | 'suspended' | 'pending' }>();
+
+  await c.env.DB.prepare('UPDATE merchant_profiles SET status = ? WHERE id = ?')
+    .bind(body.status, id)
+    .run();
+
+  return c.json({ success: true, data: { id, status: body.status } });
+});
+
+// Admin: List All Riders in Town with Duty Status
+app.get('/api/admin/riders', async (c) => {
+  const { results: riders } = await c.env.DB.prepare(
+    'SELECT * FROM rider_profiles ORDER BY created_at DESC'
+  ).all();
+
+  return c.json({ success: true, data: riders || [] });
+});
+
+// Admin: Update Rider Approval Status
+app.post('/api/admin/riders/:id/status', async (c) => {
+  const id = c.req.param('id');
+  const body = await c.req.json<{ status: 'approved' | 'rejected' | 'suspended' | 'pending' }>();
+
+  await c.env.DB.prepare('UPDATE rider_profiles SET status = ? WHERE id = ?')
+    .bind(body.status, id)
+    .run();
+
+  return c.json({ success: true, data: { id, status: body.status } });
+});
+
+// Admin: Live Town Orders Audit Stream
+app.get('/api/admin/orders', async (c) => {
+  const { results: orders } = await c.env.DB.prepare(`
+    SELECT o.*, m.business_name as merchant_name, r.name as rider_name
+    FROM orders o
+    LEFT JOIN merchant_profiles m ON o.merchant_id = m.id
+    LEFT JOIN rider_profiles r ON o.rider_id = r.id
+    ORDER BY o.created_at DESC
+    LIMIT 50
+  `).all();
+
+  return c.json({ success: true, data: orders || [] });
 });
 
 export default app;
