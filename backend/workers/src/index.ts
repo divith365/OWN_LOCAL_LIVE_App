@@ -405,9 +405,21 @@ app.post('/api/orders', async (c) => {
     return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Merchant store not found' } }, 404);
   }
 
+  // Verify store is open for business
+  if (merchant.is_open === 0) {
+    return c.json({
+      success: false,
+      error: {
+        code: 'STORE_CLOSED',
+        message: `${merchant.business_name} is currently closed. Orders cannot be accepted at this time.`,
+      },
+    }, 400);
+  }
+
+  let distanceKm = 1.0;
   // Radius & Delivery Capability Verification
   if (body.delivery_latitude && body.delivery_longitude) {
-    const distanceKm = calculateDistanceKm(
+    distanceKm = calculateDistanceKm(
       body.delivery_latitude,
       body.delivery_longitude,
       merchant.latitude,
@@ -451,15 +463,31 @@ app.post('/api/orders', async (c) => {
 
   const productIds = body.items.map((i) => `'${i.product_id}'`).join(',');
   const { results: dbProducts } = await c.env.DB.prepare(
-    `SELECT id, name, price FROM products WHERE id IN (${productIds})`
+    `SELECT id, name, price, in_stock FROM products WHERE id IN (${productIds})`
   ).all();
 
   const productMap = new Map((dbProducts || []).map((p: any) => [p.id, p]));
 
+  // Verify stock & calculate authoritative pricing
   let itemTotal = 0;
+  for (const item of body.items) {
+    const p: any = productMap.get(item.product_id);
+    if (!p) {
+      return c.json({ success: false, error: { code: 'PRODUCT_NOT_FOUND', message: `Product ${item.product_id} not found` } }, 404);
+    }
+    if (p.in_stock === 0) {
+      return c.json({
+        success: false,
+        error: {
+          code: 'PRODUCT_OUT_OF_STOCK',
+          message: `"${p.name}" is currently out of stock at ${merchant.business_name}. Please remove it to proceed.`,
+        },
+      }, 400);
+    }
+  }
+
   const processedItems = body.items.map((item) => {
     const p: any = productMap.get(item.product_id);
-    if (!p) throw new Error(`Product ${item.product_id} not found`);
     const totalPrice = p.price * item.quantity;
     itemTotal += totalPrice;
     return {
@@ -471,7 +499,18 @@ app.post('/api/orders', async (c) => {
     };
   });
 
-  const deliveryFee = body.delivery_type === 'STORE_PICKUP' ? 0 : 25;
+  // Dynamic distance-tiered delivery fee
+  let deliveryFee = 0;
+  if (body.delivery_type !== 'STORE_PICKUP') {
+    if (distanceKm <= 1.5) {
+      deliveryFee = 15;
+    } else if (distanceKm <= 3.0) {
+      deliveryFee = 25;
+    } else {
+      deliveryFee = Math.round(25 + (distanceKm - 3.0) * 8);
+    }
+  }
+
   const platformFee = 5;
   const grandTotal = itemTotal + deliveryFee + platformFee;
 
@@ -1230,6 +1269,61 @@ app.post('/api/rider/location', async (c) => {
   }
 
   return c.json({ success: true, data: { rider_id: riderId, latitude: body.latitude, longitude: body.longitude } });
+});
+
+// Rider: Self-Registration / Fleet Onboarding
+app.post('/api/riders', async (c) => {
+  const body = await c.req.json<{
+    name: string;
+    phone: string;
+    vehicle_type?: 'bike' | 'scooter' | 'cycle' | 'auto';
+    vehicle_number: string;
+    preferred_radius_km?: number;
+  }>();
+
+  if (!body.name?.trim() || !body.phone?.trim() || !body.vehicle_number?.trim()) {
+    return c.json({
+      success: false,
+      error: { code: 'INVALID_INPUT', message: 'Name, phone number, and vehicle number are required' },
+    }, 400);
+  }
+
+  const userId = `usr_rider_${Date.now()}`;
+  const riderId = `rider_${Date.now()}`;
+  const radius = Number(body.preferred_radius_km || 3.0);
+
+  // 1. Ensure user exists
+  await c.env.DB.prepare(`
+    INSERT OR IGNORE INTO users (id, phone, email, role, status)
+    VALUES (?, ?, ?, 'rider', 'active')
+  `)
+    .bind(userId, body.phone.trim(), `${riderId}@ownlocal.live`)
+    .run();
+
+  // 2. Insert rider profile (approved with duty online ready for pilot orders)
+  await c.env.DB.prepare(`
+    INSERT INTO rider_profiles (
+      id, user_id, name, phone, vehicle_type, vehicle_number, status, online_status, preferred_radius_km
+    ) VALUES (?, ?, ?, ?, ?, ?, 'approved', 1, ?)
+  `)
+    .bind(
+      riderId,
+      userId,
+      body.name.trim(),
+      body.phone.trim(),
+      body.vehicle_type || 'bike',
+      body.vehicle_number.trim().toUpperCase(),
+      radius
+    )
+    .run();
+
+  const createdRider = await c.env.DB.prepare('SELECT * FROM rider_profiles WHERE id = ?').bind(riderId).first();
+
+  return c.json({
+    success: true,
+    data: createdRider,
+    message: 'Rider successfully registered and active for deliveries! 🎉',
+  });
 });
 
 // Admin: Get Town GMV, All Merchants, and System Metrics

@@ -280,6 +280,19 @@ export class OwnlocalApiClient {
     });
   }
 
+  async registerRider(data: {
+    name: string;
+    phone: string;
+    vehicle_type?: 'bike' | 'scooter' | 'cycle' | 'auto';
+    vehicle_number: string;
+    preferred_radius_km?: number;
+  }): Promise<ApiResponse<RiderProfile>> {
+    return this.request('/api/riders', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
   async riderPickupJob(orderId: string): Promise<ApiResponse<any>> {
     return this.request('/api/rider/pickup-job', {
       method: 'POST',
