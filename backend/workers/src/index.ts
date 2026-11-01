@@ -405,6 +405,17 @@ app.post('/api/orders', async (c) => {
     return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Merchant store not found' } }, 404);
   }
 
+  // Verify merchant is approved by platform admin
+  if (merchant.status !== 'approved') {
+    return c.json({
+      success: false,
+      error: {
+        code: 'MERCHANT_NOT_APPROVED',
+        message: `${merchant.business_name} is currently pending approval or suspended by Admin.`,
+      },
+    }, 400);
+  }
+
   // Verify store is open for business
   if (merchant.is_open === 0) {
     return c.json({
@@ -1006,7 +1017,9 @@ app.get('/api/rider/console', async (c) => {
   let availableJobs: any[] = [];
   let offlineNotice: string | null = null;
 
-  if (!isOnline) {
+  if (!isApproved) {
+    offlineNotice = 'Your rider account is pending Admin approval or suspended. Please contact Admin.';
+  } else if (!isOnline) {
     offlineNotice = 'You are currently OFFLINE. Toggle duty ON to receive nearby store pickup jobs.';
   } else {
     // Rider GPS coordinates
@@ -1137,6 +1150,15 @@ app.post('/api/rider/accept-job', async (c) => {
 
   if (!order) {
     return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Order not found' } }, 404);
+  }
+
+  // Check if rider is approved
+  const riderProfile: any = await c.env.DB.prepare('SELECT status FROM rider_profiles WHERE id = ?').bind(riderId).first();
+  if (riderProfile && riderProfile.status !== 'approved') {
+    return c.json({
+      success: false,
+      error: { code: 'NOT_APPROVED', message: 'Rider account is pending Admin approval or suspended.' },
+    }, 403);
   }
 
   if (order.rider_id && order.rider_id !== riderId) {
