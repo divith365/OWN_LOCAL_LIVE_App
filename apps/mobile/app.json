@@ -6,8 +6,11 @@
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "scheme": "ownlocallive",
+    "icon": "./assets/icon.png",
     "splash": {
-      "backgroundColor": "#059669"
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#073f7c"
     },
     "platforms": [
       "ios",
@@ -23,6 +26,10 @@
     },
     "android": {
       "package": "com.ownlocal.live",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
       "permissions": [
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION",
