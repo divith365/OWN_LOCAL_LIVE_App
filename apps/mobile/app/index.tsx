@@ -11,9 +11,11 @@ import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors, Spacing, BorderRadius, Typography } from '@ownlocal/ui';
 import { apiClient } from '../src/api';
+import { useAuth } from '../src/context/AuthContext';
 
 export default function RoleSwitcherScreen() {
   const router = useRouter();
+  const { user, isAuthenticated, role: activeRole, logout } = useAuth();
   const [healthStatus, setHealthStatus] = useState<'checking' | 'connected' | 'error'>('checking');
   const [serverInfo, setServerInfo] = useState<any>(null);
 
@@ -109,6 +111,40 @@ export default function RoleSwitcherScreen() {
           </View>
         </View>
 
+        {/* Phase 2: Live Auth Banner */}
+        <View style={styles.authBanner}>
+          {isAuthenticated ? (
+            <View style={styles.authRow}>
+              <View>
+                <Text style={styles.authTitle}>
+                  👤 Authenticated: <Text style={{ fontWeight: '700' }}>+91-{user?.phone}</Text>
+                </Text>
+                <Text style={styles.authSub}>Role: {activeRole?.toUpperCase()} (JWT Session Active)</Text>
+              </View>
+              <TouchableOpacity style={styles.logoutBtn} onPress={logout}>
+                <Text style={styles.logoutBtnText}>Logout</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <TouchableOpacity
+              style={styles.loginCardBtn}
+              activeOpacity={0.8}
+              onPress={() => router.push('/login')}
+            >
+              <View style={styles.loginIconBox}>
+                <Text style={{ fontSize: 20 }}>🔐</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.loginCardTitle}>Sign In with Phone OTP / Google Auth</Text>
+                <Text style={styles.loginCardSub}>
+                  Test verified authentication & server-side RBAC
+                </Text>
+              </View>
+              <Text style={styles.loginArrow}>→</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
         {/* Roles Section */}
         <Text style={styles.sectionHeading}>Select Persona to Launch</Text>
 
@@ -145,8 +181,8 @@ export default function RoleSwitcherScreen() {
           <Text style={styles.techText}>
             • React Native + Expo Router (Android & iOS){'\n'}
             • Cloudflare Workers + D1 SQLite Database{'\n'}
-            • Cloudflare R2 Bucket for Assets & Documents{'\n'}
-            • Strict Order State Machine & Haversine Discovery
+            • Phone OTP & Google Phone Auth + JWT Sessions{'\n'}
+            • Server-Side RBAC Enforcement on Protected Routes
           </Text>
         </View>
       </ScrollView>
@@ -164,7 +200,7 @@ const styles = StyleSheet.create({
   },
   header: {
     alignItems: 'center',
-    marginVertical: Spacing.lg,
+    marginVertical: Spacing.md,
   },
   brandRow: {
     flexDirection: 'row',
@@ -205,6 +241,74 @@ const styles = StyleSheet.create({
     ...Typography.caption,
     color: Colors.slate700,
     fontWeight: '600',
+  },
+  authBanner: {
+    marginVertical: Spacing.md,
+  },
+  authRow: {
+    backgroundColor: Colors.primaryTint,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.md,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.primary,
+  },
+  authTitle: {
+    ...Typography.subhead,
+    color: Colors.slate900,
+  },
+  authSub: {
+    ...Typography.caption,
+    color: Colors.primaryDark,
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  logoutBtn: {
+    backgroundColor: Colors.white,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  logoutBtnText: {
+    ...Typography.caption,
+    color: Colors.danger,
+    fontWeight: '700',
+  },
+  loginCardBtn: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.primary,
+    gap: 12,
+  },
+  loginIconBox: {
+    width: 40,
+    height: 40,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.primaryTint,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loginCardTitle: {
+    ...Typography.subheadBold,
+    color: Colors.slate900,
+  },
+  loginCardSub: {
+    ...Typography.caption,
+    color: Colors.textMuted,
+    marginTop: 2,
+  },
+  loginArrow: {
+    fontSize: 20,
+    color: Colors.primary,
+    fontWeight: '700',
   },
   sectionHeading: {
     ...Typography.title3,

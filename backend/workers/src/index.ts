@@ -3,6 +3,8 @@ import { cors } from 'hono/cors';
 import { calculateDistanceKm } from './utils/distance';
 import { isValidOrderTransition } from './utils/order-state';
 import { OrderStatus } from '@ownlocal/types';
+import { authRouter } from './routes/auth';
+import { requireAuth, requireRole } from './middleware/rbac';
 
 export interface Env {
   DB: D1Database;
@@ -14,7 +16,7 @@ export interface Env {
   JWT_SECRET?: string;
 }
 
-const app = new Hono<{ Bindings: Env }>();
+const app = new Hono<{ Bindings: Env; Variables: { user: any } }>();
 
 // Enable CORS for mobile app and admin dashboard
 app.use('*', cors({
@@ -29,6 +31,7 @@ app.get('/', (c) => {
     service: 'OWNLOCAL LIVE API',
     town: c.env.PILOT_TOWN || 'Ilkal',
     version: '1.0.0',
+    auth_supported: ['phone_otp', 'google_phone_auth'],
     docs: '/api/health',
   });
 });
@@ -41,89 +44,16 @@ app.get('/api/health', (c) => {
       status: 'healthy',
       environment: c.env.ENVIRONMENT || 'development',
       pilot_town: c.env.PILOT_TOWN || 'Ilkal',
+      auth: 'JWT + D1 Sessions + RBAC Active',
       timestamp: new Date().toISOString(),
     },
   });
 });
 
-// 2. Auth: Send OTP
-app.post('/api/auth/send-otp', async (c) => {
-  const body = await c.req.json<{ phone?: string; role?: string }>();
-  if (!body.phone || !/^[6-9]\d{9}$/.test(body.phone)) {
-    return c.json(
-      { success: false, error: { code: 'INVALID_PHONE', message: 'Enter a valid 10-digit mobile number' } },
-      400
-    );
-  }
+// Mount Authentication Router (/api/auth/send-otp, /api/auth/verify-otp, /api/auth/google-phone, etc.)
+app.route('/api/auth', authRouter);
 
-  const role = body.role || 'customer';
-  // Check or register user
-  const existingUser = await c.env.DB.prepare('SELECT * FROM users WHERE phone = ?')
-    .bind(body.phone)
-    .first();
-
-  if (!existingUser) {
-    const userId = `usr_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-    await c.env.DB.prepare(
-      'INSERT INTO users (id, phone, role, status) VALUES (?, ?, ?, ?)'
-    )
-      .bind(userId, body.phone, role, 'active')
-      .run();
-  }
-
-  // In development, return mock OTP 123456
-  const mockOtp = '123456';
-  return c.json({
-    success: true,
-    data: {
-      message: `OTP sent to +91-${body.phone}`,
-      mockOtp: c.env.ENVIRONMENT === 'production' ? undefined : mockOtp,
-    },
-  });
-});
-
-// 3. Auth: Verify OTP
-app.post('/api/auth/verify-otp', async (c) => {
-  const body = await c.req.json<{ phone?: string; otp?: string; role?: string }>();
-  if (!body.phone || !body.otp) {
-    return c.json(
-      { success: false, error: { code: 'BAD_REQUEST', message: 'Phone and OTP are required' } },
-      400
-    );
-  }
-
-  // Development check: allow 123456
-  if (body.otp !== '123456') {
-    return c.json(
-      { success: false, error: { code: 'INVALID_OTP', message: 'Invalid OTP code entered' } },
-      401
-    );
-  }
-
-  const user = await c.env.DB.prepare('SELECT * FROM users WHERE phone = ?')
-    .bind(body.phone)
-    .first();
-
-  if (!user) {
-    return c.json(
-      { success: false, error: { code: 'USER_NOT_FOUND', message: 'User record not found' } },
-      404
-    );
-  }
-
-  // Mock token for development (production will use JWT)
-  const token = `ownlocal_${user.id}_${Date.now()}`;
-
-  return c.json({
-    success: true,
-    data: {
-      token,
-      user,
-    },
-  });
-});
-
-// 4. Merchants: List & Nearby Discovery
+// 2. Merchants: Public Discovery & Nearby Filtering
 app.get('/api/merchants', async (c) => {
   const category = c.req.query('category');
   const latStr = c.req.query('lat');
@@ -157,7 +87,6 @@ app.get('/api/merchants', async (c) => {
     };
   });
 
-  // Sort ascending by distance
   merchantsWithDistance.sort((a: any, b: any) => a.distanceKm - b.distanceKm);
 
   return c.json({
@@ -170,7 +99,7 @@ app.get('/api/merchants', async (c) => {
   });
 });
 
-// 5. Merchant Details
+// 3. Merchant Details
 app.get('/api/merchants/:id', async (c) => {
   const id = c.req.param('id');
   const merchant = await c.env.DB.prepare('SELECT * FROM merchant_profiles WHERE id = ?')
@@ -184,7 +113,7 @@ app.get('/api/merchants/:id', async (c) => {
   return c.json({ success: true, data: merchant });
 });
 
-// 6. Products for Merchant
+// 4. Products for Merchant
 app.get('/api/merchants/:id/products', async (c) => {
   const merchantId = c.req.param('id');
   const { results } = await c.env.DB.prepare(
@@ -196,7 +125,7 @@ app.get('/api/merchants/:id/products', async (c) => {
   return c.json({ success: true, data: results || [] });
 });
 
-// 7. Orders: Create Order
+// 5. Orders: Create Order
 app.post('/api/orders', async (c) => {
   const body = await c.req.json<{
     customer_id?: string;
@@ -213,7 +142,6 @@ app.post('/api/orders', async (c) => {
     return c.json({ success: false, error: { code: 'BAD_REQUEST', message: 'Invalid order payload' } }, 400);
   }
 
-  // Calculate pricing from DB
   const productIds = body.items.map((i) => `'${i.product_id}'`).join(',');
   const { results: dbProducts } = await c.env.DB.prepare(
     `SELECT id, name, price FROM products WHERE id IN (${productIds})`
@@ -245,7 +173,6 @@ app.post('/api/orders', async (c) => {
   const customerId = body.customer_id || 'usr_cust_01';
   const deliveryOtp = String(Math.floor(1000 + Math.random() * 9000));
 
-  // Insert Order
   await c.env.DB.prepare(`
     INSERT INTO orders (
       id, order_number, customer_id, merchant_id, delivery_type,
@@ -274,7 +201,6 @@ app.post('/api/orders', async (c) => {
     )
     .run();
 
-  // Insert Order Items
   for (const item of processedItems) {
     const itemId = `item_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
     await c.env.DB.prepare(`
@@ -285,7 +211,6 @@ app.post('/api/orders', async (c) => {
       .run();
   }
 
-  // Insert Status History
   await c.env.DB.prepare(`
     INSERT INTO order_status_history (id, order_id, from_status, to_status, notes)
     VALUES (?, ?, ?, ?, ?)
@@ -306,7 +231,7 @@ app.post('/api/orders', async (c) => {
   });
 });
 
-// 8. Order Status & State Machine Updates
+// 6. Order Status & State Machine Updates
 app.post('/api/orders/:id/status', async (c) => {
   const orderId = c.req.param('id');
   const body = await c.req.json<{ status: OrderStatus; notes?: string }>();
@@ -319,7 +244,6 @@ app.post('/api/orders/:id/status', async (c) => {
     return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Order not found' } }, 404);
   }
 
-  // Validate state machine transition (Section 11)
   if (!isValidOrderTransition(currentOrder.status, body.status)) {
     return c.json(
       {
@@ -353,7 +277,7 @@ app.post('/api/orders/:id/status', async (c) => {
   });
 });
 
-// 9. Get Single Order
+// 7. Get Single Order
 app.get('/api/orders/:id', async (c) => {
   const orderId = c.req.param('id');
   const order: any = await c.env.DB.prepare('SELECT * FROM orders WHERE id = ?')
@@ -373,6 +297,78 @@ app.get('/api/orders/:id', async (c) => {
     data: {
       ...order,
       items: items || [],
+    },
+  });
+});
+
+// --- RBAC PROTECTED ROLE ENDPOINTS ---
+
+// Merchant Only: Get Store Incoming Orders & Dashboard Stats
+app.get('/api/merchant/dashboard', requireAuth, requireRole('merchant'), async (c) => {
+  const user = c.get('user');
+  const merchant: any = await c.env.DB.prepare('SELECT * FROM merchant_profiles WHERE user_id = ?')
+    .bind(user.userId)
+    .first();
+
+  const merchantId = merchant ? merchant.id : 'merch_ayodhya';
+
+  const { results: pendingOrders } = await c.env.DB.prepare(`
+    SELECT * FROM orders WHERE merchant_id = ? ORDER BY created_at DESC LIMIT 20
+  `)
+    .bind(merchantId)
+    .all();
+
+  return c.json({
+    success: true,
+    data: {
+      merchant: merchant || { business_name: 'Ayodhya Hotel', id: merchantId },
+      orders: pendingOrders || [],
+    },
+  });
+});
+
+// Rider Only: Get Assigned Delivery Jobs & Update GPS
+app.get('/api/rider/active-job', requireAuth, requireRole('rider'), async (c) => {
+  const user = c.get('user');
+  const rider: any = await c.env.DB.prepare('SELECT * FROM rider_profiles WHERE user_id = ?')
+    .bind(user.userId)
+    .first();
+
+  const riderId = rider ? rider.id : 'rider_01';
+
+  const activeJob: any = await c.env.DB.prepare(`
+    SELECT o.*, m.business_name as merchant_name, m.address as merchant_address
+    FROM orders o
+    JOIN merchant_profiles m ON o.merchant_id = m.id
+    WHERE o.rider_id = ? AND o.status NOT IN ('DELIVERED', 'FAILED', 'CUSTOMER_CANCELLED')
+    LIMIT 1
+  `)
+    .bind(riderId)
+    .first();
+
+  return c.json({
+    success: true,
+    data: {
+      rider: rider || { name: 'Manjunath Badiger', vehicle_number: 'KA-29-EE-4521' },
+      activeJob: activeJob || null,
+    },
+  });
+});
+
+// Admin Only: Get Town GMV, All Merchants, and KYC Queue
+app.get('/api/admin/metrics', requireAuth, requireRole('admin'), async (c) => {
+  const totalOrders: any = await c.env.DB.prepare('SELECT COUNT(*) as count, SUM(grand_total) as gmv FROM orders').first();
+  const merchantsCount: any = await c.env.DB.prepare('SELECT COUNT(*) as count FROM merchant_profiles WHERE status = "approved"').first();
+  const ridersCount: any = await c.env.DB.prepare('SELECT COUNT(*) as count FROM rider_profiles WHERE status = "approved"').first();
+
+  return c.json({
+    success: true,
+    data: {
+      total_orders: totalOrders?.count || 0,
+      total_gmv: totalOrders?.gmv || 0,
+      merchants_count: merchantsCount?.count || 0,
+      riders_count: ridersCount?.count || 0,
+      town: c.env.PILOT_TOWN || 'Ilkal',
     },
   });
 });

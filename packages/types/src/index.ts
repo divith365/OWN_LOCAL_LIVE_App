@@ -13,6 +13,23 @@ export interface User {
   updated_at: string;
 }
 
+export interface AuthSession {
+  token: string;
+  refreshToken: string;
+  user: {
+    id: string;
+    phone: string;
+    role: UserRole;
+    status: UserStatus;
+  };
+}
+
+export interface GooglePhoneAuthInput {
+  idToken: string;
+  role?: UserRole;
+  device_info?: string;
+}
+
 // Customer Profile
 export interface CustomerProfile {
   id: string;

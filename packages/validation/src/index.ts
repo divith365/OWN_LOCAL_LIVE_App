@@ -16,6 +16,16 @@ export const VerifyOtpSchema = z.object({
   role: z.enum(['customer', 'merchant', 'rider', 'admin']),
 });
 
+export const GooglePhoneAuthSchema = z.object({
+  idToken: z.string().min(10, 'Google ID token required'),
+  role: z.enum(['customer', 'merchant', 'rider', 'admin']).default('customer'),
+  device_info: z.string().optional(),
+});
+
+export const RefreshTokenSchema = z.object({
+  refreshToken: z.string().min(10, 'Refresh token required'),
+});
+
 // Location / Address Schema
 export const AddressSchema = z.object({
   title: z.string().min(1, 'Title is required'),
