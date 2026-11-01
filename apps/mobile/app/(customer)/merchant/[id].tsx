@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -7,21 +7,34 @@ import {
   StyleSheet,
   ActivityIndicator,
   Alert,
+  TextInput,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Colors, Spacing, BorderRadius, Typography } from '@ownlocal/ui';
 import { apiClient } from '../../../src/api';
+import { useCart } from '../../../src/context/CartContext';
+import { Product } from '@ownlocal/types';
 
 export default function MerchantCatalogScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
 
   const [merchant, setMerchant] = useState<any>(null);
-  const [products, setProducts] = useState<any[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
-  const [cart, setCart] = useState<Record<string, number>>({});
-  const [ordering, setOrdering] = useState(false);
-  const [createdOrder, setCreatedOrder] = useState<any>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [dietFilter, setDietFilter] = useState<'ALL' | 'VEG' | 'NON_VEG'>('ALL');
+
+  const {
+    items: cartItems,
+    merchantId: cartMerchantId,
+    merchantName: cartMerchantName,
+    itemCount,
+    grandTotal,
+    addItem,
+    updateQuantity,
+    clearCart,
+  } = useCart();
 
   useEffect(() => {
     if (!id) return;
@@ -33,56 +46,62 @@ export default function MerchantCatalogScreen() {
       .finally(() => setLoading(false));
   }, [id]);
 
-  const updateQuantity = (productId: string, delta: number) => {
-    setCart((prev) => {
-      const current = prev[productId] || 0;
-      const next = Math.max(0, current + delta);
-      if (next === 0) {
-        const copy = { ...prev };
-        delete copy[productId];
-        return copy;
-      }
-      return { ...prev, [productId]: next };
-    });
+  // Compute quantity in cart for a given product
+  const getProductQuantity = (productId: string): number => {
+    const found = cartItems.find((ci) => ci.product.id === productId);
+    return found ? found.quantity : 0;
   };
 
-  const cartItemsCount = Object.values(cart).reduce((a, b) => a + b, 0);
+  const handleAddToCart = (product: Product) => {
+    if (!merchant) return;
 
-  const cartTotal = products.reduce((acc, p) => {
-    const qty = cart[p.id] || 0;
-    return acc + p.price * qty;
-  }, 0);
+    const success = addItem(product, {
+      id: merchant.id,
+      name: merchant.business_name,
+    });
 
-  const handlePlaceOrder = async () => {
-    if (cartItemsCount === 0) return;
-    setOrdering(true);
-
-    const items = Object.entries(cart).map(([product_id, quantity]) => ({
-      product_id,
-      quantity,
-    }));
-
-    try {
-      const res = await apiClient.createOrder({
-        merchant_id: id as string,
-        items,
-        delivery_type: merchant?.own_delivery_enabled ? 'MERCHANT_SELF' : 'PLATFORM_RIDER',
-        delivery_address: 'Gandhi Chowk, Near Basaveshwar Temple, Ilkal - 587125',
-        payment_method: 'UPI',
-      });
-
-      if (res.success && res.data) {
-        setCreatedOrder(res.data);
-        setCart({});
-      } else {
-        Alert.alert('Error', res.error?.message || 'Could not place order');
-      }
-    } catch (e: any) {
-      Alert.alert('Error', e?.message || 'Failed to connect');
-    } finally {
-      setOrdering(false);
+    if (!success) {
+      Alert.alert(
+        'Replace cart items?',
+        `Your cart already contains items from "${cartMerchantName}". Would you like to discard them and start a new order from "${merchant.business_name}"?`,
+        [
+          { text: 'Keep Current Cart', style: 'cancel' },
+          {
+            text: 'Clear & Add',
+            style: 'destructive',
+            onPress: () => {
+              clearCart();
+              addItem(product, {
+                id: merchant.id,
+                name: merchant.business_name,
+              });
+            },
+          },
+        ]
+      );
     }
   };
+
+  // Filtered menu items
+  const filteredProducts = useMemo(() => {
+    return products.filter((p) => {
+      const matchesSearch =
+        searchQuery === '' ||
+        p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (p.description && p.description.toLowerCase().includes(searchQuery.toLowerCase()));
+
+      const isVeg = Boolean(p.is_veg);
+      const matchesDiet =
+        dietFilter === 'ALL' ||
+        (dietFilter === 'VEG' && isVeg) ||
+        (dietFilter === 'NON_VEG' && !isVeg);
+
+      return matchesSearch && matchesDiet;
+    });
+  }, [products, searchQuery, dietFilter]);
+
+  const vegCount = useMemo(() => products.filter((p) => Boolean(p.is_veg)).length, [products]);
+  const nonVegCount = useMemo(() => products.filter((p) => !Boolean(p.is_veg)).length, [products]);
 
   if (loading) {
     return (
@@ -93,73 +112,139 @@ export default function MerchantCatalogScreen() {
     );
   }
 
+  const isCartFromThisStore = cartMerchantId === id;
+
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {/* Store Header Card */}
         <View style={styles.storeHeader}>
-          <Text style={styles.storeName}>{merchant?.business_name || 'Store Details'}</Text>
-          <Text style={styles.storeCategory}>{merchant?.category}</Text>
-          <Text style={styles.storeAddress}>📍 {merchant?.address}</Text>
-
-          <View style={styles.badgeRow}>
+          <View style={styles.storeHeaderTop}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.storeName}>{merchant?.business_name || 'Store Details'}</Text>
+              <Text style={styles.storeCategory}>{merchant?.category?.toUpperCase()}</Text>
+            </View>
             <View style={styles.ratingBadge}>
               <Text style={styles.ratingText}>★ {merchant?.rating || '4.8'}</Text>
             </View>
+          </View>
+
+          <Text style={styles.storeAddress}>📍 {merchant?.address}</Text>
+
+          <View style={styles.badgeRow}>
             <View style={styles.deliveryBadge}>
               <Text style={styles.deliveryBadgeText}>
-                {merchant?.own_delivery_enabled ? 'Direct Store Delivery' : 'Platform Rider Assured'}
+                {merchant?.own_delivery_enabled ? '⚡ Direct Store Delivery' : '🛵 Platform Rider Assured'}
+              </Text>
+            </View>
+            <View style={styles.radiusBadge}>
+              <Text style={styles.radiusBadgeText}>
+                Radius: {merchant?.service_radius_km || 5} km
               </Text>
             </View>
           </View>
         </View>
 
-        {/* Order Confirmed Banner */}
-        {createdOrder && (
-          <View style={styles.orderSuccessBanner}>
-            <Text style={styles.orderSuccessTitle}>🎉 Order Placed Successfully!</Text>
-            <Text style={styles.orderSuccessText}>
-              Order Number: <Text style={{ fontWeight: '700' }}>{createdOrder.order_number}</Text>
+        {/* Conflict Notice if cart belongs to another store */}
+        {cartItems.length > 0 && !isCartFromThisStore && (
+          <View style={styles.otherStoreCartNotice}>
+            <Text style={styles.otherStoreText}>
+              🛒 Cart has {itemCount} items from <Text style={{ fontWeight: '700' }}>{cartMerchantName}</Text>
             </Text>
-            <Text style={styles.orderSuccessText}>
-              Status: <Text style={{ fontWeight: '700', color: Colors.warning }}>{createdOrder.status}</Text>
-            </Text>
-            <Text style={styles.orderSuccessText}>
-              Delivery OTP: <Text style={{ fontWeight: '700' }}>{createdOrder.delivery_otp}</Text>
-            </Text>
-            <Text style={styles.orderSuccessSubtext}>
-              Awaiting merchant acceptance at {merchant?.business_name}.
-            </Text>
+            <TouchableOpacity onPress={() => router.push('/(customer)/cart')}>
+              <Text style={styles.viewCartLink}>View Cart →</Text>
+            </TouchableOpacity>
           </View>
         )}
 
-        {/* Menu Section */}
-        <Text style={styles.sectionHeading}>Menu & Catalog</Text>
+        {/* Menu Search Bar */}
+        <View style={styles.searchBar}>
+          <Text style={styles.searchIcon}>🔍</Text>
+          <TextInput
+            style={styles.searchInput}
+            placeholder={`Search dishes in ${merchant?.business_name || 'store'}...`}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholderTextColor={Colors.textMuted}
+          />
+          {searchQuery !== '' && (
+            <TouchableOpacity onPress={() => setSearchQuery('')}>
+              <Text style={styles.clearSearch}>✕</Text>
+            </TouchableOpacity>
+          )}
+        </View>
 
+        {/* Diet Filters */}
+        <View style={styles.filterRow}>
+          <TouchableOpacity
+            style={[styles.filterChip, dietFilter === 'ALL' && styles.filterChipActive]}
+            onPress={() => setDietFilter('ALL')}
+          >
+            <Text style={[styles.filterText, dietFilter === 'ALL' && styles.filterTextActive]}>
+              All ({products.length})
+            </Text>
+          </TouchableOpacity>
+
+          {vegCount > 0 && (
+            <TouchableOpacity
+              style={[styles.filterChip, dietFilter === 'VEG' && styles.filterChipActive]}
+              onPress={() => setDietFilter('VEG')}
+            >
+              <Text style={[styles.filterText, dietFilter === 'VEG' && styles.filterTextActive]}>
+                🟢 Veg ({vegCount})
+              </Text>
+            </TouchableOpacity>
+          )}
+
+          {nonVegCount > 0 && (
+            <TouchableOpacity
+              style={[styles.filterChip, dietFilter === 'NON_VEG' && styles.filterChipActive]}
+              onPress={() => setDietFilter('NON_VEG')}
+            >
+              <Text style={[styles.filterText, dietFilter === 'NON_VEG' && styles.filterTextActive]}>
+                🔴 Non-Veg ({nonVegCount})
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* Menu Section Heading */}
+        <Text style={styles.sectionHeading}>
+          Menu Catalog ({filteredProducts.length})
+        </Text>
+
+        {/* Product List */}
         <View style={styles.productList}>
-          {products.map((item) => {
-            const qty = cart[item.id] || 0;
+          {filteredProducts.map((item) => {
+            const qty = isCartFromThisStore ? getProductQuantity(item.id) : 0;
+            const isOutOfStock = item.in_stock === false || (item.in_stock as any) === 0;
+
             return (
-              <View key={item.id} style={styles.productCard}>
+              <View key={item.id} style={[styles.productCard, isOutOfStock && styles.productCardOos]}>
                 <View style={styles.productInfo}>
                   <View style={styles.vegIndicatorRow}>
-                    <Text style={styles.vegDot}>{item.is_veg ? '🟢 Veg' : '🔴 Non-Veg'}</Text>
+                    <Text style={styles.vegDot}>{item.is_veg ? '🟢 Pure Veg' : '🔴 Non-Veg'}</Text>
+                    {isOutOfStock && <Text style={styles.oosTag}>Out of stock</Text>}
                   </View>
                   <Text style={styles.productName}>{item.name}</Text>
                   <Text style={styles.productPrice}>₹{item.price}</Text>
-                  {item.description && (
+                  {item.description ? (
                     <Text style={styles.productDesc} numberOfLines={2}>
                       {item.description}
                     </Text>
-                  )}
+                  ) : null}
                 </View>
 
-                {/* Add / Quantity Buttons */}
+                {/* Add / Stepper Counter */}
                 <View style={styles.qtyContainer}>
-                  {qty === 0 ? (
+                  {isOutOfStock ? (
+                    <View style={styles.disabledBtn}>
+                      <Text style={styles.disabledBtnText}>Unavailable</Text>
+                    </View>
+                  ) : qty === 0 ? (
                     <TouchableOpacity
                       style={styles.addBtn}
-                      onPress={() => updateQuantity(item.id, 1)}
+                      onPress={() => handleAddToCart(item)}
                     >
                       <Text style={styles.addBtnText}>ADD +</Text>
                     </TouchableOpacity>
@@ -184,27 +269,35 @@ export default function MerchantCatalogScreen() {
               </View>
             );
           })}
+
+          {filteredProducts.length === 0 && (
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyEmoji}>🍽️</Text>
+              <Text style={styles.emptyText}>No items found matching your filters</Text>
+            </View>
+          )}
         </View>
       </ScrollView>
 
       {/* Floating Bottom Cart Bar */}
-      {cartItemsCount > 0 && (
+      {cartItems.length > 0 && (
         <View style={styles.bottomCartBar}>
           <View>
-            <Text style={styles.cartCountText}>{cartItemsCount} {cartItemsCount === 1 ? 'item' : 'items'}</Text>
-            <Text style={styles.cartTotalText}>₹{cartTotal + 30} <Text style={styles.taxNote}>(incl. ₹30 delivery & platform)</Text></Text>
+            <Text style={styles.cartCountText}>
+              {itemCount} {itemCount === 1 ? 'item' : 'items'}
+              {cartMerchantName ? ` • ${cartMerchantName}` : ''}
+            </Text>
+            <Text style={styles.cartTotalText}>
+              ₹{grandTotal}{' '}
+              <Text style={styles.taxNote}>(incl. ₹30 delivery & platform)</Text>
+            </Text>
           </View>
 
           <TouchableOpacity
             style={styles.placeOrderBtn}
-            disabled={ordering}
-            onPress={handlePlaceOrder}
+            onPress={() => router.push('/(customer)/cart')}
           >
-            {ordering ? (
-              <ActivityIndicator color={Colors.white} size="small" />
-            ) : (
-              <Text style={styles.placeOrderText}>Place Order →</Text>
-            )}
+            <Text style={styles.placeOrderText}>View Cart →</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -229,7 +322,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: Spacing.lg,
-    paddingBottom: 100,
+    paddingBottom: 110,
   },
   storeHeader: {
     backgroundColor: Colors.white,
@@ -237,6 +330,11 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.lg,
     borderWidth: 1,
     borderColor: Colors.border,
+  },
+  storeHeaderTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
   },
   storeName: {
     ...Typography.title2,
@@ -246,16 +344,18 @@ const styles = StyleSheet.create({
     ...Typography.caption,
     color: Colors.primaryDark,
     fontWeight: '700',
-    marginTop: 4,
+    marginTop: 2,
+    letterSpacing: 0.5,
   },
   storeAddress: {
     ...Typography.subhead,
     color: Colors.textMuted,
-    marginTop: 6,
+    marginTop: 8,
   },
   badgeRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexWrap: 'wrap',
     gap: 8,
     marginTop: Spacing.md,
   },
@@ -281,33 +381,90 @@ const styles = StyleSheet.create({
     color: Colors.primaryDark,
     fontWeight: '600',
   },
-  orderSuccessBanner: {
-    backgroundColor: Colors.successLight,
+  radiusBadge: {
+    backgroundColor: Colors.slate100,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: BorderRadius.sm,
+  },
+  radiusBadgeText: {
+    ...Typography.caption,
+    color: Colors.slate600,
+  },
+  otherStoreCartNotice: {
+    backgroundColor: Colors.warningLight,
+    borderColor: Colors.warning,
+    borderWidth: 1,
     borderRadius: BorderRadius.md,
     padding: Spacing.md,
     marginTop: Spacing.md,
-    borderWidth: 1,
-    borderColor: Colors.success,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
-  orderSuccessTitle: {
-    ...Typography.bodyBold,
-    color: Colors.success,
-  },
-  orderSuccessText: {
-    ...Typography.subhead,
-    color: Colors.slate800,
-    marginTop: 4,
-  },
-  orderSuccessSubtext: {
+  otherStoreText: {
     ...Typography.caption,
-    color: Colors.slate600,
-    marginTop: 6,
-    fontStyle: 'italic',
+    color: Colors.slate800,
+    flex: 1,
+  },
+  viewCartLink: {
+    ...Typography.captionBold,
+    color: Colors.primaryDark,
+    marginLeft: Spacing.sm,
+  },
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    paddingHorizontal: Spacing.md,
+    marginTop: Spacing.lg,
+    height: 44,
+  },
+  searchIcon: {
+    fontSize: 16,
+    marginRight: 8,
+  },
+  searchInput: {
+    flex: 1,
+    ...Typography.body,
+    color: Colors.text,
+  },
+  clearSearch: {
+    fontSize: 16,
+    color: Colors.textMuted,
+    padding: 4,
+  },
+  filterRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: Spacing.md,
+  },
+  filterChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  filterChipActive: {
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
+  },
+  filterText: {
+    ...Typography.captionBold,
+    color: Colors.slate700,
+  },
+  filterTextActive: {
+    color: Colors.white,
   },
   sectionHeading: {
     ...Typography.title3,
     color: Colors.slate900,
-    marginTop: Spacing.xl,
+    marginTop: Spacing.lg,
     marginBottom: Spacing.md,
   },
   productList: {
@@ -323,16 +480,29 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  productCardOos: {
+    opacity: 0.6,
+  },
   productInfo: {
     flex: 1,
     paddingRight: Spacing.md,
   },
   vegIndicatorRow: {
-    marginBottom: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 4,
   },
   vegDot: {
     fontSize: 11,
     fontWeight: '600',
+    color: Colors.slate700,
+  },
+  oosTag: {
+    fontSize: 10,
+    color: Colors.danger,
+    fontWeight: '700',
+    textTransform: 'uppercase',
   },
   productName: {
     ...Typography.bodyBold,
@@ -384,6 +554,28 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     paddingHorizontal: 6,
   },
+  disabledBtn: {
+    backgroundColor: Colors.slate200,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: BorderRadius.md,
+  },
+  disabledBtnText: {
+    ...Typography.caption,
+    color: Colors.slate500,
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    paddingVertical: Spacing.xxl,
+  },
+  emptyEmoji: {
+    fontSize: 40,
+    marginBottom: 8,
+  },
+  emptyText: {
+    ...Typography.subhead,
+    color: Colors.textMuted,
+  },
   bottomCartBar: {
     position: 'absolute',
     bottom: 0,
@@ -396,6 +588,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderTopLeftRadius: BorderRadius.xl,
     borderTopRightRadius: BorderRadius.xl,
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: -3 },
   },
   cartCountText: {
     ...Typography.caption,

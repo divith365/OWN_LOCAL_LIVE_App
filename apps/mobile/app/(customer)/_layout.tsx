@@ -12,23 +12,44 @@ export default function CustomerLayout() {
         headerStyle: { backgroundColor: Colors.primary },
         headerTintColor: Colors.white,
         headerTitleStyle: { fontWeight: '700' },
-        headerLeft: () => (
-          <TouchableOpacity onPress={() => router.back()} style={{ marginRight: 12 }}>
-            <Text style={{ color: Colors.white, fontSize: 16, fontWeight: '600' }}>← Roles</Text>
-          </TouchableOpacity>
-        ),
       }}
     >
       <Stack.Screen
         name="index"
         options={{
           title: 'Ilkal Marketplace',
+          headerLeft: () => (
+            <TouchableOpacity onPress={() => router.replace('/')} style={{ marginRight: 12 }}>
+              <Text style={{ color: Colors.white, fontSize: 16, fontWeight: '600' }}>← Roles</Text>
+            </TouchableOpacity>
+          ),
+          headerRight: () => (
+            <TouchableOpacity onPress={() => router.push('/(customer)/cart')} style={{ marginLeft: 8 }}>
+              <Text style={{ color: Colors.white, fontSize: 16, fontWeight: '600' }}>🛒 Cart</Text>
+            </TouchableOpacity>
+          ),
         }}
       />
       <Stack.Screen
         name="merchant/[id]"
         options={{
-          title: 'Store & Menu',
+          title: 'Store & Catalog',
+          headerLeft: () => (
+            <TouchableOpacity onPress={() => router.back()} style={{ marginRight: 12 }}>
+              <Text style={{ color: Colors.white, fontSize: 16, fontWeight: '600' }}>← Back</Text>
+            </TouchableOpacity>
+          ),
+        }}
+      />
+      <Stack.Screen
+        name="cart"
+        options={{
+          title: 'Review & Checkout',
+          headerLeft: () => (
+            <TouchableOpacity onPress={() => router.back()} style={{ marginRight: 12 }}>
+              <Text style={{ color: Colors.white, fontSize: 16, fontWeight: '600' }}>← Back</Text>
+            </TouchableOpacity>
+          ),
         }}
       />
     </Stack>

@@ -5,6 +5,7 @@ import { isValidOrderTransition } from './utils/order-state';
 import { OrderStatus } from '@ownlocal/types';
 import { authRouter } from './routes/auth';
 import { requireAuth, requireRole } from './middleware/rbac';
+import { verifyJwt } from './utils/crypto';
 
 export interface Env {
   DB: D1Database;
@@ -56,6 +57,7 @@ app.route('/api/auth', authRouter);
 // 2. Merchants: Public Discovery & Nearby Filtering
 app.get('/api/merchants', async (c) => {
   const category = c.req.query('category');
+  const queryParam = c.req.query('q')?.trim();
   const latStr = c.req.query('lat');
   const lngStr = c.req.query('lng');
 
@@ -68,6 +70,11 @@ app.get('/api/merchants', async (c) => {
   if (category) {
     query += ' AND category = ?';
     bindings.push(category);
+  }
+
+  if (queryParam) {
+    query += ' AND (business_name LIKE ? OR category LIKE ? OR address LIKE ?)';
+    bindings.push(`%${queryParam}%`, `%${queryParam}%`, `%${queryParam}%`);
   }
 
   const { results } = await c.env.DB.prepare(query).bind(...bindings).all();
@@ -97,6 +104,46 @@ app.get('/api/merchants', async (c) => {
       customer_coordinates: { latitude: customerLat, longitude: customerLng },
     },
   });
+});
+
+// Search Products Across Stores in Ilkal
+app.get('/api/products/search', async (c) => {
+  const q = c.req.query('q')?.trim();
+  if (!q) {
+    return c.json({ success: true, data: [] });
+  }
+
+  const latStr = c.req.query('lat');
+  const lngStr = c.req.query('lng');
+  const customerLat = latStr ? parseFloat(latStr) : Number(c.env.PILOT_LATITUDE || 15.9587);
+  const customerLng = lngStr ? parseFloat(lngStr) : Number(c.env.PILOT_LONGITUDE || 76.1264);
+
+  const { results } = await c.env.DB.prepare(`
+    SELECT p.*, m.business_name, m.latitude as merchant_lat, m.longitude as merchant_lng, m.service_radius_km
+    FROM products p
+    JOIN merchant_profiles m ON p.merchant_id = m.id
+    WHERE p.active = 1 AND (p.name LIKE ? OR p.description LIKE ?)
+    LIMIT 30
+  `)
+    .bind(`%${q}%`, `%${q}%`)
+    .all();
+
+  const formatted = (results || []).map((row: any) => {
+    const distanceKm = calculateDistanceKm(
+      customerLat,
+      customerLng,
+      row.merchant_lat,
+      row.merchant_lng
+    );
+    return {
+      ...row,
+      distanceKm,
+      isDeliverable: distanceKm <= (row.service_radius_km || 5.0),
+    };
+  });
+
+  formatted.sort((a: any, b: any) => a.distanceKm - b.distanceKm);
+  return c.json({ success: true, data: formatted });
 });
 
 // 3. Merchant Details
@@ -170,7 +217,18 @@ app.post('/api/orders', async (c) => {
 
   const orderId = `ord_${Date.now()}`;
   const orderNumber = `ILK-${Math.floor(1000 + Math.random() * 9000)}`;
-  const customerId = body.customer_id || 'usr_cust_01';
+  let customerId = body.customer_id || 'usr_cust_01';
+  
+  const authHeader = c.req.header('Authorization');
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.substring(7);
+    const jwtSecret = c.env.JWT_SECRET || 'ownlocal_live_super_secret_jwt_key_2026_ilkal_pilot';
+    const decoded = await verifyJwt<{ userId: string }>(token, jwtSecret);
+    if (decoded.valid && decoded.payload?.userId) {
+      customerId = decoded.payload.userId;
+    }
+  }
+
   const deliveryOtp = String(Math.floor(1000 + Math.random() * 9000));
 
   await c.env.DB.prepare(`
@@ -299,6 +357,33 @@ app.get('/api/orders/:id', async (c) => {
       items: items || [],
     },
   });
+});
+
+// 8. Customer Order History
+app.get('/api/customer/orders', async (c) => {
+  let customerId = c.req.query('customer_id') || 'usr_cust_01';
+  const authHeader = c.req.header('Authorization');
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.substring(7);
+    const jwtSecret = c.env.JWT_SECRET || 'ownlocal_live_super_secret_jwt_key_2026_ilkal_pilot';
+    const decoded = await verifyJwt<{ userId: string }>(token, jwtSecret);
+    if (decoded.valid && decoded.payload?.userId) {
+      customerId = decoded.payload.userId;
+    }
+  }
+
+  const { results: orders } = await c.env.DB.prepare(`
+    SELECT o.*, m.business_name as merchant_name
+    FROM orders o
+    JOIN merchant_profiles m ON o.merchant_id = m.id
+    WHERE o.customer_id = ?
+    ORDER BY o.created_at DESC
+    LIMIT 20
+  `)
+    .bind(customerId)
+    .all();
+
+  return c.json({ success: true, data: orders || [] });
 });
 
 // --- RBAC PROTECTED ROLE ENDPOINTS ---

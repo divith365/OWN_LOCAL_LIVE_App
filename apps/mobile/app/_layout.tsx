@@ -4,12 +4,14 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Colors } from '@ownlocal/ui';
 import { AuthProvider } from '../src/context/AuthContext';
+import { CartProvider } from '../src/context/CartContext';
 
 export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <AuthProvider>
-        <StatusBar style="light" backgroundColor={Colors.primaryDark} />
+        <CartProvider>
+          <StatusBar style="light" backgroundColor={Colors.primaryDark} />
         <Stack
           screenOptions={{
             headerStyle: { backgroundColor: Colors.primary },
@@ -60,6 +62,7 @@ export default function RootLayout() {
             }}
           />
         </Stack>
+        </CartProvider>
       </AuthProvider>
     </SafeAreaProvider>
   );

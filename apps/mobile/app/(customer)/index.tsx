@@ -4,13 +4,17 @@ import {
   Text,
   ScrollView,
   TouchableOpacity,
+  TextInput,
   StyleSheet,
   ActivityIndicator,
   RefreshControl,
+  Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import * as Location from 'expo-location';
 import { Colors, Spacing, BorderRadius, Typography } from '@ownlocal/ui';
 import { apiClient } from '../../src/api';
+import { useCart } from '../../src/context/CartContext';
 
 const CATEGORIES = [
   { id: 'all', name: 'All Stores' },
@@ -18,21 +22,90 @@ const CATEGORIES = [
   { id: 'Ilkal Sarees & Handloom', name: 'Ilkal Sarees' },
   { id: 'Kirana & Daily Needs', name: 'Kirana Store' },
   { id: 'Pharmacy & Healthcare', name: 'Pharmacy' },
+  { id: 'Fresh Fruits & Veggies', name: 'Fresh Fruits' },
 ];
 
 export default function CustomerMarketplaceScreen() {
   const router = useRouter();
+  const { itemCount, grandTotal } = useCart();
+
   const [selectedCategory, setSelectedCategory] = useState('all');
+  const [searchQuery, setSearchQuery] = useState('');
   const [merchants, setMerchants] = useState<any[]>([]);
+  const [productResults, setProductResults] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  const fetchMerchants = async () => {
+  // GPS state
+  const [locationName, setLocationName] = useState('Gandhi Chowk, Ilkal • 587125');
+  const [coords, setCoords] = useState<{ lat: number; lng: number }>({
+    lat: 15.9587,
+    lng: 76.1264,
+  });
+  const [locating, setLocating] = useState(false);
+
+  // Request & Read Native GPS
+  const handleDetectGps = async () => {
+    setLocating(true);
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Denied', 'Using default Ilkal pilot center (Gandhi Chowk).');
+        setLocating(false);
+        return;
+      }
+
+      const position = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+
+      const newCoords = {
+        lat: position.coords.latitude,
+        lng: position.coords.longitude,
+      };
+      setCoords(newCoords);
+
+      // Reverse geocode town
+      const [address] = await Location.reverseGeocodeAsync({
+        latitude: newCoords.lat,
+        longitude: newCoords.lng,
+      });
+      if (address) {
+        setLocationName(`${address.name || address.street || 'Current Location'}, ${address.city || 'Ilkal'} • ${address.postalCode || '587125'}`);
+      }
+    } catch {
+      // Fallback
+      setLocationName('Gandhi Chowk, Ilkal • 587125');
+    } finally {
+      setLocating(false);
+    }
+  };
+
+  const fetchCatalog = async () => {
     try {
       const categoryParam = selectedCategory === 'all' ? undefined : selectedCategory;
-      const res = await apiClient.getMerchants({ category: categoryParam });
+      const res = await apiClient.getMerchants({
+        category: categoryParam,
+        q: searchQuery || undefined,
+        lat: coords.lat,
+        lng: coords.lng,
+      });
+
       if (res.success && res.data) {
         setMerchants(res.data);
+      }
+
+      // If searching, also search products
+      if (searchQuery.trim().length >= 2) {
+        const pRes = await apiClient.searchProducts(searchQuery.trim(), {
+          lat: coords.lat,
+          lng: coords.lng,
+        });
+        if (pRes.success) {
+          setProductResults(pRes.data || []);
+        }
+      } else {
+        setProductResults([]);
       }
     } catch (e) {
       console.error(e);
@@ -44,70 +117,139 @@ export default function CustomerMarketplaceScreen() {
 
   useEffect(() => {
     setLoading(true);
-    fetchMerchants();
-  }, [selectedCategory]);
+    fetchCatalog();
+  }, [selectedCategory, coords]);
+
+  // Debounced search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetchCatalog();
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   return (
     <View style={styles.container}>
-      {/* Location Bar */}
+      {/* Location Bar with Native GPS detection */}
       <View style={styles.locationBar}>
         <View style={styles.locationInfo}>
           <Text style={styles.locationLabel}>DELIVERING TO</Text>
-          <Text style={styles.locationText}>📍 Gandhi Chowk, Ilkal • 587125</Text>
+          <Text style={styles.locationText} numberOfLines={1}>
+            📍 {locationName}
+          </Text>
         </View>
-        <TouchableOpacity style={styles.changeLocBtn}>
-          <Text style={styles.changeLocText}>GPS Active</Text>
+        <TouchableOpacity
+          style={styles.changeLocBtn}
+          disabled={locating}
+          onPress={handleDetectGps}
+        >
+          {locating ? (
+            <ActivityIndicator size="small" color={Colors.primaryDark} />
+          ) : (
+            <Text style={styles.changeLocText}>⚡ Detect GPS</Text>
+          )}
         </TouchableOpacity>
       </View>
 
-      {/* Category Pills */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.categoryScroll}
-      >
-        {CATEGORIES.map((cat) => {
-          const isSelected = selectedCategory === cat.id;
-          return (
-            <TouchableOpacity
-              key={cat.id}
-              style={[
-                styles.categoryChip,
-                isSelected && styles.categoryChipSelected,
-              ]}
-              onPress={() => setSelectedCategory(cat.id)}
-            >
-              <Text
-                style={[
-                  styles.categoryChipText,
-                  isSelected && styles.categoryChipTextSelected,
-                ]}
-              >
-                {cat.name}
-              </Text>
+      {/* Search Input Bar */}
+      <View style={styles.searchContainer}>
+        <View style={styles.searchBox}>
+          <Text style={styles.searchIcon}>🔍</Text>
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search stores, masala dosa, sarees, kirana..."
+            placeholderTextColor={Colors.slate400}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            returnKeyType="search"
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchQuery('')}>
+              <Text style={styles.clearSearch}>✕</Text>
             </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
+          )}
+        </View>
+      </View>
 
-      {/* Merchants Feed */}
+      {/* Category Filter Carousel */}
+      <View>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.categoryScroll}
+        >
+          {CATEGORIES.map((cat) => {
+            const isSelected = selectedCategory === cat.id;
+            return (
+              <TouchableOpacity
+                key={cat.id}
+                style={[
+                  styles.categoryChip,
+                  isSelected && styles.categoryChipSelected,
+                ]}
+                onPress={() => setSelectedCategory(cat.id)}
+              >
+                <Text
+                  style={[
+                    styles.categoryChipText,
+                    isSelected && styles.categoryChipTextSelected,
+                  ]}
+                >
+                  {cat.name}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      </View>
+
+      {/* Feed Content */}
       <ScrollView
-        contentContainerStyle={styles.feedContent}
+        contentContainerStyle={[styles.feedContent, itemCount > 0 && { paddingBottom: 100 }]}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchMerchants(); }} />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              setRefreshing(true);
+              fetchCatalog();
+            }}
+          />
         }
       >
-        <Text style={styles.feedHeading}>Nearby Stores in Ilkal</Text>
+        {/* Product Search Matches (if any) */}
+        {productResults.length > 0 && (
+          <View style={styles.productMatchSection}>
+            <Text style={styles.sectionTitle}>Matching Items in Ilkal ({productResults.length})</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>
+              {productResults.map((p) => (
+                <TouchableOpacity
+                  key={p.id}
+                  style={styles.productMatchCard}
+                  activeOpacity={0.8}
+                  onPress={() => router.push(`/(customer)/merchant/${p.merchant_id}` as any)}
+                >
+                  <Text style={styles.matchStoreName}>🏪 {p.business_name} ({p.distanceKm} km)</Text>
+                  <Text style={styles.matchProdName}>{p.name}</Text>
+                  <Text style={styles.matchPrice}>₹{p.price}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        )}
+
+        <Text style={styles.feedHeading}>
+          {searchQuery ? `Stores matching "${searchQuery}"` : 'Nearby Stores in Ilkal'}
+        </Text>
 
         {loading ? (
           <View style={styles.centerContainer}>
             <ActivityIndicator size="large" color={Colors.primary} />
-            <Text style={styles.loadingText}>Finding nearby stores with D1 Haversine...</Text>
+            <Text style={styles.loadingText}>Calculating nearby stores via Haversine...</Text>
           </View>
         ) : merchants.length === 0 ? (
           <View style={styles.centerContainer}>
             <Text style={styles.emptyTitle}>No stores found</Text>
-            <Text style={styles.emptySubtitle}>Try selecting a different category</Text>
+            <Text style={styles.emptySubtitle}>Try searching for a different keyword or category</Text>
           </View>
         ) : (
           merchants.map((merchant) => (
@@ -164,6 +306,25 @@ export default function CustomerMarketplaceScreen() {
           ))
         )}
       </ScrollView>
+
+      {/* Floating Bottom Cart Bar */}
+      {itemCount > 0 && (
+        <View style={styles.floatingCartBar}>
+          <View>
+            <Text style={styles.cartBarCount}>
+              🛒 {itemCount} {itemCount === 1 ? 'item' : 'items'}
+            </Text>
+            <Text style={styles.cartBarTotal}>Total: ₹{grandTotal}</Text>
+          </View>
+
+          <TouchableOpacity
+            style={styles.viewCartBtn}
+            onPress={() => router.push('/(customer)/cart' as any)}
+          >
+            <Text style={styles.viewCartText}>View Cart & Checkout →</Text>
+          </TouchableOpacity>
+        </View>
+      )}
     </View>
   );
 }
@@ -185,6 +346,7 @@ const styles = StyleSheet.create({
   },
   locationInfo: {
     flex: 1,
+    paddingRight: Spacing.sm,
   },
   locationLabel: {
     ...Typography.caption,
@@ -198,14 +360,44 @@ const styles = StyleSheet.create({
   },
   changeLocBtn: {
     backgroundColor: Colors.primaryTint,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     borderRadius: BorderRadius.full,
+    borderWidth: 1,
+    borderColor: Colors.primary,
   },
   changeLocText: {
     ...Typography.caption,
     color: Colors.primaryDark,
     fontWeight: '700',
+  },
+  searchContainer: {
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.md,
+  },
+  searchBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  searchIcon: {
+    fontSize: 16,
+    marginRight: 8,
+  },
+  searchInput: {
+    flex: 1,
+    ...Typography.subhead,
+    color: Colors.slate900,
+  },
+  clearSearch: {
+    fontSize: 14,
+    color: Colors.textMuted,
+    paddingHorizontal: 4,
   },
   categoryScroll: {
     paddingHorizontal: Spacing.lg,
@@ -237,6 +429,37 @@ const styles = StyleSheet.create({
     padding: Spacing.lg,
     paddingTop: Spacing.xs,
     gap: Spacing.md,
+  },
+  productMatchSection: {
+    marginBottom: Spacing.md,
+  },
+  sectionTitle: {
+    ...Typography.subheadBold,
+    color: Colors.slate800,
+    marginBottom: 8,
+  },
+  productMatchCard: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.md,
+    padding: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.primary,
+    width: 170,
+  },
+  matchStoreName: {
+    fontSize: 11,
+    color: Colors.primaryDark,
+    fontWeight: '600',
+  },
+  matchProdName: {
+    ...Typography.subheadBold,
+    color: Colors.slate900,
+    marginTop: 4,
+  },
+  matchPrice: {
+    ...Typography.subheadBold,
+    color: Colors.slate800,
+    marginTop: 2,
   },
   feedHeading: {
     ...Typography.title3,
@@ -336,5 +559,43 @@ const styles = StyleSheet.create({
   metaPillText: {
     ...Typography.caption,
     color: Colors.slate700,
+  },
+  floatingCartBar: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: Colors.slate900,
+    padding: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderTopLeftRadius: BorderRadius.xl,
+    borderTopRightRadius: BorderRadius.xl,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  cartBarCount: {
+    ...Typography.caption,
+    color: Colors.slate300,
+    fontWeight: '600',
+  },
+  cartBarTotal: {
+    ...Typography.title3,
+    color: Colors.white,
+    marginTop: 2,
+  },
+  viewCartBtn: {
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: BorderRadius.md,
+  },
+  viewCartText: {
+    ...Typography.subheadBold,
+    color: Colors.white,
   },
 });

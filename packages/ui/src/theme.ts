@@ -68,4 +68,5 @@ export const Typography = {
   subhead: { fontSize: 13, fontWeight: '400' as const, lineHeight: 18 },
   subheadBold: { fontSize: 13, fontWeight: '600' as const, lineHeight: 18 },
   caption: { fontSize: 11, fontWeight: '500' as const, lineHeight: 15 },
+  captionBold: { fontSize: 11, fontWeight: '700' as const, lineHeight: 15 },
 };

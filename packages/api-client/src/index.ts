@@ -125,9 +125,10 @@ export class OwnlocalApiClient {
   }
 
   // Merchants
-  async getMerchants(params?: { category?: string; lat?: number; lng?: number }): Promise<ApiResponse<MerchantProfile[]>> {
+  async getMerchants(params?: { category?: string; q?: string; lat?: number; lng?: number }): Promise<ApiResponse<MerchantProfile[]>> {
     const searchParams = new URLSearchParams();
     if (params?.category) searchParams.set('category', params.category);
+    if (params?.q) searchParams.set('q', params.q);
     if (params?.lat) searchParams.set('lat', params.lat.toString());
     if (params?.lng) searchParams.set('lng', params.lng.toString());
     const query = searchParams.toString() ? `?${searchParams.toString()}` : '';
@@ -136,6 +137,15 @@ export class OwnlocalApiClient {
 
   async getMerchant(id: string): Promise<ApiResponse<MerchantProfile>> {
     return this.request(`/api/merchants/${id}`);
+  }
+
+  // Search Products Across Stores in Town
+  async searchProducts(q: string, params?: { lat?: number; lng?: number }): Promise<ApiResponse<any[]>> {
+    const searchParams = new URLSearchParams();
+    searchParams.set('q', q);
+    if (params?.lat) searchParams.set('lat', params.lat.toString());
+    if (params?.lng) searchParams.set('lng', params.lng.toString());
+    return this.request(`/api/products/search?${searchParams.toString()}`);
   }
 
   // Products
@@ -160,6 +170,11 @@ export class OwnlocalApiClient {
       method: 'POST',
       body: JSON.stringify({ status, notes }),
     });
+  }
+
+  async getCustomerOrders(customerId?: string): Promise<ApiResponse<Order[]>> {
+    const query = customerId ? `?customer_id=${customerId}` : '';
+    return this.request(`/api/customer/orders${query}`);
   }
 
   // RBAC Protected Role Endpoints
