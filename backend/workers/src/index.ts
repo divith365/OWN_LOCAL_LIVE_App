@@ -830,4 +830,63 @@ app.get('/api/admin/orders', async (c) => {
   return c.json({ success: true, data: orders || [] });
 });
 
+// --- 9. Cloudflare R2 Media Storage Routes ---
+
+// Upload Media Asset (Product Images, Merchant KYC, Rider Driving Licenses)
+app.post('/api/assets/upload', async (c) => {
+  const formData = await c.req.formData();
+  const file = formData.get('file');
+
+  if (!file || !(file instanceof File)) {
+    return c.json({ success: false, error: { code: 'BAD_REQUEST', message: 'No file provided in form-data (key "file")' } }, 400);
+  }
+
+  const extension = file.name.split('.').pop() || 'bin';
+  const assetKey = `asset_${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${extension}`;
+  const contentType = file.type || 'application/octet-stream';
+
+  const buffer = await file.arrayBuffer();
+
+  await c.env.ASSETS_BUCKET.put(assetKey, buffer, {
+    httpMetadata: {
+      contentType,
+    },
+    customMetadata: {
+      originalName: file.name,
+      uploadedAt: new Date().toISOString(),
+    },
+  });
+
+  const origin = new URL(c.req.url).origin;
+  const assetUrl = `${origin}/api/assets/${assetKey}`;
+
+  return c.json({
+    success: true,
+    data: {
+      key: assetKey,
+      filename: file.name,
+      contentType,
+      size: buffer.byteLength,
+      url: assetUrl,
+    },
+  });
+});
+
+// Serve / Download Media Asset from R2
+app.get('/api/assets/:key', async (c) => {
+  const key = c.req.param('key');
+  const object = await c.env.ASSETS_BUCKET.get(key);
+
+  if (!object) {
+    return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Asset not found in storage bucket' } }, 404);
+  }
+
+  const headers = new Headers();
+  object.writeHttpMetadata(headers);
+  headers.set('etag', object.httpEtag);
+  headers.set('cache-control', 'public, max-age=31536000, immutable');
+
+  return new Response(object.body, { headers });
+});
+
 export default app;

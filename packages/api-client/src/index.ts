@@ -274,4 +274,19 @@ export class OwnlocalApiClient {
   async getAdminOrders(): Promise<ApiResponse<any[]>> {
     return this.request('/api/admin/orders');
   }
+
+  // Cloudflare R2 Media Storage
+  async uploadAsset(file: any, filename: string): Promise<ApiResponse<{ key: string; filename: string; contentType: string; size: number; url: string }>> {
+    const formData = new FormData();
+    formData.append('file', file, filename);
+
+    return this.request('/api/assets/upload', {
+      method: 'POST',
+      body: formData,
+    });
+  }
+
+  getAssetUrl(key: string): string {
+    return `${this.baseUrl}/api/assets/${key}`;
+  }
 }
