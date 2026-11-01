@@ -356,7 +356,7 @@ export default function AdminDashboardScreen() {
       {/* Header Banner */}
       <View style={styles.headerCard}>
         <Text style={styles.title}>Town Operations Control Tower</Text>
-        <Text style={styles.subtitle}>Super Admin Live Governance • Cloudflare D1 Backend</Text>
+        <Text style={styles.subtitle}>Super Admin Live Governance & Platform Control</Text>
       </View>
 
       {/* KPI Grid */}
@@ -393,7 +393,7 @@ export default function AdminDashboardScreen() {
           onPress={() => setActiveTab('METRICS')}
         >
           <Text style={[styles.tabText, activeTab === 'METRICS' && styles.tabTextActive]}>
-            📊 System
+            📊 Overview
           </Text>
         </TouchableOpacity>
 
@@ -425,15 +425,15 @@ export default function AdminDashboardScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Tab: System & Infrastructure */}
+      {/* Tab: Overview & Operational Health */}
       {activeTab === 'METRICS' && (
         <View style={styles.sectionCol}>
           <View style={styles.auditCard}>
-            <Text style={styles.auditTitle}>Cloudflare Infrastructure Status</Text>
-            <Text style={styles.auditText}>• D1 Database: `ownlocal-live-db` (SQLite 3 / APAC Region)</Text>
-            <Text style={styles.auditText}>• R2 Asset Bucket: `ownlocal-live-assets` (Zero Egress Fees)</Text>
-            <Text style={styles.auditText}>• Worker Gateway: `ownlocal-live-api` (Global Edge Sub-50ms)</Text>
-            <Text style={styles.auditText}>• Security: Native WebCrypto HS256 JWT + Server-Side RBAC</Text>
+            <Text style={styles.auditTitle}>🟢 Platform Network Health</Text>
+            <Text style={styles.auditText}>• Gateway Status: Active & Operational</Text>
+            <Text style={styles.auditText}>• Verified Merchant Base: {merchants.length} Approved Stores</Text>
+            <Text style={styles.auditText}>• Registered Fleet: {riders.length} Delivery Partners</Text>
+            <Text style={styles.auditText}>• Security & Integrity: 4-Digit Delivery OTP Handshake Active</Text>
           </View>
 
           <View style={styles.governanceCard}>
