@@ -1222,7 +1222,7 @@ app.delete('/api/merchant/products/:id', async (c) => {
 
 // Rider Console: Get Active Assignment, Available Jobs Pool (Filtered by Merchant-to-Rider distance), Metrics & Profile
 app.get('/api/rider/console', async (c) => {
-  let riderId = c.req.query('rider_id') || 'rider_01';
+  let riderId = c.req.query('rider_id');
 
   const authHeader = c.req.header('Authorization');
   if (authHeader && authHeader.startsWith('Bearer ')) {
@@ -1239,9 +1239,16 @@ app.get('/api/rider/console', async (c) => {
     }
   }
 
-  const rider: any = await c.env.DB.prepare('SELECT * FROM rider_profiles WHERE id = ?')
-    .bind(riderId)
-    .first();
+  let rider: any = null;
+  if (riderId) {
+    rider = await c.env.DB.prepare('SELECT * FROM rider_profiles WHERE id = ?')
+      .bind(riderId)
+      .first();
+  }
+  if (!rider) {
+    rider = await c.env.DB.prepare('SELECT * FROM rider_profiles ORDER BY created_at DESC LIMIT 1').first();
+    if (rider) riderId = rider.id;
+  }
 
   const isApproved = rider ? rider.status === 'approved' : true;
   const isOnline = rider ? Boolean(rider.online_status) : true;

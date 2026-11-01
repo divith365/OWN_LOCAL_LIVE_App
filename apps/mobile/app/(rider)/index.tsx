@@ -43,7 +43,7 @@ export default function RiderConsoleScreen() {
   const fetchRiderData = useCallback(async (isManual = false) => {
     if (isManual) setRefreshing(true);
     try {
-      const res = await apiClient.getRiderConsole('rider_01');
+      const res = await apiClient.getRiderConsole();
       if (res.success && res.data) {
         setRider(res.data.rider);
         if (res.data.rider?.id) {
