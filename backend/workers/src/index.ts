@@ -335,10 +335,18 @@ app.post('/api/orders/:id/status', async (c) => {
   });
 });
 
-// 7. Get Single Order
+// 7. Get Single Order (with merchant, rider, items, and status timeline)
 app.get('/api/orders/:id', async (c) => {
   const orderId = c.req.param('id');
-  const order: any = await c.env.DB.prepare('SELECT * FROM orders WHERE id = ?')
+  const order: any = await c.env.DB.prepare(`
+    SELECT o.*,
+      m.business_name as merchant_name, m.address as merchant_address, m.phone as merchant_phone,
+      r.name as rider_name, r.vehicle_number as rider_vehicle_number, r.phone as rider_phone
+    FROM orders o
+    LEFT JOIN merchant_profiles m ON o.merchant_id = m.id
+    LEFT JOIN rider_profiles r ON o.rider_id = r.id
+    WHERE o.id = ?
+  `)
     .bind(orderId)
     .first();
 
@@ -350,12 +358,93 @@ app.get('/api/orders/:id', async (c) => {
     .bind(orderId)
     .all();
 
+  const { results: history } = await c.env.DB.prepare('SELECT * FROM order_status_history WHERE order_id = ? ORDER BY created_at ASC')
+    .bind(orderId)
+    .all();
+
   return c.json({
     success: true,
     data: {
       ...order,
       items: items || [],
+      history: history || [],
     },
+  });
+});
+
+// 7a. Verify Delivery OTP Handshake (Rider -> Customer Handshake)
+app.post('/api/orders/:id/verify-delivery', async (c) => {
+  const orderId = c.req.param('id');
+  const body = await c.req.json<{ otp: string }>();
+
+  const currentOrder: any = await c.env.DB.prepare('SELECT * FROM orders WHERE id = ?')
+    .bind(orderId)
+    .first();
+
+  if (!currentOrder) {
+    return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Order not found' } }, 404);
+  }
+
+  if (currentOrder.delivery_otp !== body.otp?.trim()) {
+    return c.json({ success: false, error: { code: 'INVALID_DELIVERY_OTP', message: 'Invalid delivery OTP provided by customer' } }, 400);
+  }
+
+  if (!isValidOrderTransition(currentOrder.status, 'DELIVERED')) {
+    return c.json({ success: false, error: { code: 'ILLEGAL_STATE_TRANSITION', message: `Cannot mark delivered from ${currentOrder.status}` } }, 400);
+  }
+
+  await c.env.DB.prepare('UPDATE orders SET status = "DELIVERED", updated_at = datetime("now") WHERE id = ?')
+    .bind(orderId)
+    .run();
+
+  await c.env.DB.prepare(
+    'INSERT INTO order_status_history (id, order_id, from_status, to_status, notes) VALUES (?, ?, ?, ?, ?)'
+  )
+    .bind(`hist_${Date.now()}`, orderId, currentOrder.status, 'DELIVERED', 'Verified with delivery OTP')
+    .run();
+
+  return c.json({
+    success: true,
+    data: { id: orderId, status: 'DELIVERED', verified: true },
+  });
+});
+
+// 7b. Cancel Order (Customer or Merchant Cancellation with State Validation)
+app.post('/api/orders/:id/cancel', async (c) => {
+  const orderId = c.req.param('id');
+  const body = await c.req.json<{ reason?: string }>();
+
+  const currentOrder: any = await c.env.DB.prepare('SELECT * FROM orders WHERE id = ?')
+    .bind(orderId)
+    .first();
+
+  if (!currentOrder) {
+    return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Order not found' } }, 404);
+  }
+
+  if (!isValidOrderTransition(currentOrder.status, 'CUSTOMER_CANCELLED')) {
+    return c.json({
+      success: false,
+      error: {
+        code: 'CANNOT_CANCEL',
+        message: `Order cannot be cancelled in state '${currentOrder.status}'. Please contact customer support.`,
+      },
+    }, 400);
+  }
+
+  await c.env.DB.prepare('UPDATE orders SET status = "CUSTOMER_CANCELLED", updated_at = datetime("now") WHERE id = ?')
+    .bind(orderId)
+    .run();
+
+  await c.env.DB.prepare(
+    'INSERT INTO order_status_history (id, order_id, from_status, to_status, notes) VALUES (?, ?, ?, ?, ?)'
+  )
+    .bind(`hist_${Date.now()}`, orderId, currentOrder.status, 'CUSTOMER_CANCELLED', body.reason || 'Cancelled by customer')
+    .run();
+
+  return c.json({
+    success: true,
+    data: { id: orderId, status: 'CUSTOMER_CANCELLED' },
   });
 });
 

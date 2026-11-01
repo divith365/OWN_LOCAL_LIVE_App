@@ -129,6 +129,13 @@ export default function CartScreen() {
             </View>
 
             <TouchableOpacity
+              style={styles.trackOrderBtn}
+              onPress={() => router.replace(`/(customer)/orders/${placedOrder.id}` as any)}
+            >
+              <Text style={styles.trackOrderBtnText}>Track Order Live →</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
               style={styles.doneBtn}
               onPress={() => router.replace('/(customer)')}
             >
@@ -752,6 +759,19 @@ const styles = StyleSheet.create({
     color: Colors.primaryDark,
     textAlign: 'center',
     fontWeight: '600',
+  },
+  trackOrderBtn: {
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 28,
+    paddingVertical: 14,
+    borderRadius: BorderRadius.md,
+    width: '100%',
+    alignItems: 'center',
+    marginBottom: Spacing.md,
+  },
+  trackOrderBtnText: {
+    ...Typography.bodyBold,
+    color: Colors.white,
   },
   doneBtn: {
     backgroundColor: Colors.slate900,

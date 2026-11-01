@@ -177,6 +177,20 @@ export class OwnlocalApiClient {
     return this.request(`/api/customer/orders${query}`);
   }
 
+  async verifyDeliveryOtp(orderId: string, otp: string): Promise<ApiResponse<{ id: string; status: string; verified: boolean }>> {
+    return this.request(`/api/orders/${orderId}/verify-delivery`, {
+      method: 'POST',
+      body: JSON.stringify({ otp }),
+    });
+  }
+
+  async cancelOrder(orderId: string, reason?: string): Promise<ApiResponse<{ id: string; status: string }>> {
+    return this.request(`/api/orders/${orderId}/cancel`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    });
+  }
+
   // RBAC Protected Role Endpoints
   async getMerchantDashboard(): Promise<ApiResponse<{ merchant: any; orders: any[] }>> {
     return this.request('/api/merchant/dashboard');

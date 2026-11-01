@@ -1,6 +1,6 @@
 import React from 'react';
 import { Stack, useRouter } from 'expo-router';
-import { TouchableOpacity, Text } from 'react-native';
+import { TouchableOpacity, Text, View } from 'react-native';
 import { Colors } from '@ownlocal/ui';
 
 export default function CustomerLayout() {
@@ -24,9 +24,14 @@ export default function CustomerLayout() {
             </TouchableOpacity>
           ),
           headerRight: () => (
-            <TouchableOpacity onPress={() => router.push('/(customer)/cart')} style={{ marginLeft: 8 }}>
-              <Text style={{ color: Colors.white, fontSize: 16, fontWeight: '600' }}>🛒 Cart</Text>
-            </TouchableOpacity>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <TouchableOpacity onPress={() => router.push('/(customer)/orders' as any)}>
+                <Text style={{ color: Colors.white, fontSize: 15, fontWeight: '600' }}>📦 Orders</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => router.push('/(customer)/cart')}>
+                <Text style={{ color: Colors.white, fontSize: 15, fontWeight: '600' }}>🛒 Cart</Text>
+              </TouchableOpacity>
+            </View>
           ),
         }}
       />
@@ -45,6 +50,28 @@ export default function CustomerLayout() {
         name="cart"
         options={{
           title: 'Review & Checkout',
+          headerLeft: () => (
+            <TouchableOpacity onPress={() => router.back()} style={{ marginRight: 12 }}>
+              <Text style={{ color: Colors.white, fontSize: 16, fontWeight: '600' }}>← Back</Text>
+            </TouchableOpacity>
+          ),
+        }}
+      />
+      <Stack.Screen
+        name="orders/index"
+        options={{
+          title: 'My Orders',
+          headerLeft: () => (
+            <TouchableOpacity onPress={() => router.back()} style={{ marginRight: 12 }}>
+              <Text style={{ color: Colors.white, fontSize: 16, fontWeight: '600' }}>← Back</Text>
+            </TouchableOpacity>
+          ),
+        }}
+      />
+      <Stack.Screen
+        name="orders/[id]"
+        options={{
+          title: 'Live Order Tracking',
           headerLeft: () => (
             <TouchableOpacity onPress={() => router.back()} style={{ marginRight: 12 }}>
               <Text style={{ color: Colors.white, fontSize: 16, fontWeight: '600' }}>← Back</Text>
