@@ -17,7 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { UserRole } from '@ownlocal/types';
 import { useAuth } from '../src/context/AuthContext';
 import { apiClient } from '../src/api';
-import { registerForPushNotificationsAsync } from '../src/services/notificationService';
+import { registerForPushNotificationsAsync, syncPushTokenWithBackend } from '../src/services/notificationService';
 
 const STORE_CATEGORIES = [
   'Food & Dining',
@@ -229,7 +229,7 @@ export default function LoginScreen() {
     setLoading(false);
 
     if (result.success) {
-      registerForPushNotificationsAsync().catch(() => null);
+      syncPushTokenWithBackend({ role: role.toUpperCase() }).catch(() => null);
       Alert.alert('Authenticated', `Signed in as ${role.toUpperCase()}`);
       if (role === 'customer') router.replace('/(customer)');
       else if (role === 'merchant') router.replace('/(merchant)');

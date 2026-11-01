@@ -1,5 +1,6 @@
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
+import { apiClient } from '../api';
 
 // Configure how incoming notifications appear in the foreground
 Notifications.setNotificationHandler({
@@ -45,6 +46,32 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
     console.warn('Push notification registration error (simulator or offline):', err);
     return null;
   }
+}
+
+/**
+ * Register and sync push token with backend D1 database
+ */
+export async function syncPushTokenWithBackend(metadata: {
+  userId?: string;
+  role?: string;
+  merchantId?: string;
+  riderId?: string;
+}): Promise<string | null> {
+  const token = await registerForPushNotificationsAsync();
+  if (token) {
+    try {
+      await apiClient.registerPushToken({
+        token,
+        userId: metadata.userId,
+        role: metadata.role,
+        merchantId: metadata.merchantId,
+        riderId: metadata.riderId,
+      });
+    } catch (err) {
+      console.warn('Could not register push token with backend:', err);
+    }
+  }
+  return token;
 }
 
 /**

@@ -20,7 +20,7 @@ import { apiClient } from '../../src/api';
 import { OrderStatus } from '@ownlocal/types';
 import { BrandHeader } from '../../src/components/BrandHeader';
 import { startBackgroundRiderTracking, stopBackgroundRiderTracking } from '../../src/services/riderLocationService';
-import { triggerLocalOrderAlert } from '../../src/services/notificationService';
+import { triggerLocalOrderAlert, syncPushTokenWithBackend } from '../../src/services/notificationService';
 
 export default function RiderConsoleScreen() {
   const [rider, setRider] = useState<any>(null);
@@ -46,6 +46,9 @@ export default function RiderConsoleScreen() {
       const res = await apiClient.getRiderConsole('rider_01');
       if (res.success && res.data) {
         setRider(res.data.rider);
+        if (res.data.rider?.id) {
+          syncPushTokenWithBackend({ riderId: res.data.rider.id, role: 'RIDER' }).catch(() => null);
+        }
         setActiveJob(res.data.activeJob);
         const newJobs = res.data.availableJobs || [];
         setAvailableJobs(newJobs);
@@ -150,7 +153,7 @@ export default function RiderConsoleScreen() {
     try {
       await apiClient.riderToggleDuty(val, rider?.id || 'rider_01');
       if (val) {
-        startBackgroundRiderTracking().catch((e) => console.warn('Background tracking not started:', e));
+        startBackgroundRiderTracking(rider?.id || 'rider_01').catch((e) => console.warn('Background tracking not started:', e));
       } else {
         stopBackgroundRiderTracking().catch((e) => console.warn('Background tracking not stopped:', e));
       }

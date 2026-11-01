@@ -54,6 +54,79 @@ app.get('/api/health', (c) => {
 // Mount Authentication Router (/api/auth/send-otp, /api/auth/verify-otp, /api/auth/google-phone, etc.)
 app.route('/api/auth', authRouter);
 
+// Push Notification Dispatcher (Expo Push API)
+async function sendExpoPushNotification(
+  tokens: string[],
+  title: string,
+  body: string,
+  data?: any
+) {
+  if (!tokens || tokens.length === 0) return;
+  const validTokens = Array.from(new Set(tokens)).filter((t) => typeof t === 'string' && t.startsWith('ExponentPushToken['));
+  if (validTokens.length === 0) return;
+
+  const messages = validTokens.map((token) => ({
+    to: token,
+    sound: 'default',
+    title,
+    body,
+    data: data || {},
+    channelId: 'orders',
+  }));
+
+  try {
+    await fetch('https://exp.host/--/api/v2/push/send', {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Accept-encoding': 'gzip, deflate',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(messages),
+    });
+  } catch (err) {
+    console.warn('Failed to send Expo push notification:', err);
+  }
+}
+
+// Register device push token
+app.post('/api/notifications/register-token', async (c) => {
+  const body = await c.req.json<{
+    token: string;
+    userId?: string;
+    role?: string;
+    merchantId?: string;
+    riderId?: string;
+  }>();
+
+  if (!body.token) {
+    return c.json({ success: false, error: { message: 'Push token required' } }, 400);
+  }
+
+  const id = `pt_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  await c.env.DB.prepare(`
+    INSERT INTO device_push_tokens (id, token, user_id, role, merchant_id, rider_id, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+    ON CONFLICT(token) DO UPDATE SET
+      user_id = COALESCE(excluded.user_id, device_push_tokens.user_id),
+      role = COALESCE(excluded.role, device_push_tokens.role),
+      merchant_id = COALESCE(excluded.merchant_id, device_push_tokens.merchant_id),
+      rider_id = COALESCE(excluded.rider_id, device_push_tokens.rider_id),
+      updated_at = datetime('now')
+  `)
+    .bind(
+      id,
+      body.token,
+      body.userId || null,
+      body.role || null,
+      body.merchantId || null,
+      body.riderId || null
+    )
+    .run();
+
+  return c.json({ success: true, data: { registered: true } });
+});
+
 // 2. Merchants: Public Discovery & Delivery Radius Filtering
 app.get('/api/merchants', async (c) => {
   const category = c.req.query('category');
@@ -586,6 +659,26 @@ app.post('/api/orders', async (c) => {
     .bind(`hist_${Date.now()}`, orderId, 'CREATED', 'MERCHANT_CONFIRMATION_PENDING', 'Order placed by customer')
     .run();
 
+  // Broadcast push notification to merchant
+  try {
+    const { results: merchantTokens } = await c.env.DB.prepare(
+      "SELECT token FROM device_push_tokens WHERE merchant_id = ? OR role = 'MERCHANT'"
+    )
+      .bind(body.merchant_id)
+      .all();
+    if (merchantTokens && merchantTokens.length > 0) {
+      const tokens = merchantTokens.map((r: any) => r.token);
+      sendExpoPushNotification(
+        tokens,
+        '🚨 New Order Placed!',
+        `Order #${orderNumber} (${processedItems.length} items • ₹${grandTotal}) received. Tap to accept.`,
+        { orderId, orderNumber }
+      );
+    }
+  } catch (pushErr) {
+    console.warn('Push notification error on order placement:', pushErr);
+  }
+
   return c.json({
     success: true,
     data: {
@@ -634,6 +727,64 @@ app.post('/api/orders/:id/status', async (c) => {
   )
     .bind(`hist_${Date.now()}`, orderId, currentOrder.status, body.status, body.notes || 'Status updated')
     .run();
+
+  // Push notifications on status change
+  try {
+    if (body.status === 'MERCHANT_CONFIRMED') {
+      // Notify customer
+      const { results: custTokens } = await c.env.DB.prepare(
+        'SELECT token FROM device_push_tokens WHERE user_id = ?'
+      ).bind(currentOrder.customer_id).all();
+      if (custTokens && custTokens.length > 0) {
+        sendExpoPushNotification(
+          custTokens.map((r: any) => r.token),
+          '🎉 Store Confirmed Your Order!',
+          `Order #${currentOrder.order_number} has been confirmed. Food preparation has started.`,
+          { orderId, status: body.status }
+        );
+      }
+      // Broadcast to online riders
+      const { results: riderTokens } = await c.env.DB.prepare(
+        "SELECT token FROM device_push_tokens WHERE role = 'RIDER'"
+      ).all();
+      if (riderTokens && riderTokens.length > 0) {
+        sendExpoPushNotification(
+          riderTokens.map((r: any) => r.token),
+          '🛵 New Delivery Request Available!',
+          `New pickup request for order #${currentOrder.order_number}. Tap to claim job.`,
+          { orderId, status: body.status }
+        );
+      }
+    } else if (body.status === 'PICKED_UP' || body.status === 'OUT_FOR_DELIVERY') {
+      // Notify customer
+      const { results: custTokens } = await c.env.DB.prepare(
+        'SELECT token FROM device_push_tokens WHERE user_id = ?'
+      ).bind(currentOrder.customer_id).all();
+      if (custTokens && custTokens.length > 0) {
+        sendExpoPushNotification(
+          custTokens.map((r: any) => r.token),
+          '🚀 Order Out for Delivery!',
+          `Your delivery partner is en route with order #${currentOrder.order_number}. Track live on the map.`,
+          { orderId, status: body.status }
+        );
+      }
+    } else if (body.status === 'DELIVERED') {
+      // Notify customer & merchant
+      const { results: allTokens } = await c.env.DB.prepare(
+        'SELECT token FROM device_push_tokens WHERE user_id = ? OR merchant_id = ?'
+      ).bind(currentOrder.customer_id, currentOrder.merchant_id).all();
+      if (allTokens && allTokens.length > 0) {
+        sendExpoPushNotification(
+          allTokens.map((r: any) => r.token),
+          '✅ Order Delivered!',
+          `Order #${currentOrder.order_number} has been delivered successfully. Enjoy!`,
+          { orderId, status: body.status }
+        );
+      }
+    }
+  } catch (pushErr) {
+    console.warn('Status push notification error:', pushErr);
+  }
 
   return c.json({
     success: true,
@@ -714,6 +865,23 @@ app.post('/api/orders/:id/verify-delivery', async (c) => {
   )
     .bind(`hist_${Date.now()}`, orderId, currentOrder.status, 'DELIVERED', 'Verified with delivery OTP')
     .run();
+
+  // Broadcast delivery completion push
+  try {
+    const { results: allTokens } = await c.env.DB.prepare(
+      'SELECT token FROM device_push_tokens WHERE user_id = ? OR merchant_id = ?'
+    ).bind(currentOrder.customer_id, currentOrder.merchant_id).all();
+    if (allTokens && allTokens.length > 0) {
+      sendExpoPushNotification(
+        allTokens.map((r: any) => r.token),
+        '✅ Order Delivered!',
+        `Order #${currentOrder.order_number} has been delivered and verified by OTP. Thank you!`,
+        { orderId, status: 'DELIVERED' }
+      );
+    }
+  } catch (pushErr) {
+    console.warn('Delivery push notification error:', pushErr);
+  }
 
   return c.json({
     success: true,

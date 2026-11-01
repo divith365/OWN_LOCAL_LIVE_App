@@ -419,4 +419,17 @@ export class OwnlocalApiClient {
   getAssetUrl(key: string): string {
     return `${this.baseUrl}/api/assets/${key}`;
   }
+
+  async registerPushToken(payload: {
+    token: string;
+    userId?: string;
+    role?: string;
+    merchantId?: string;
+    riderId?: string;
+  }): Promise<ApiResponse<{ registered: boolean }>> {
+    return this.request('/api/notifications/register-token', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
 }

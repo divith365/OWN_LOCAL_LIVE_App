@@ -13,6 +13,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Colors, Spacing, BorderRadius, Typography, getOrderStatusConfig } from '@ownlocal/ui';
 import { apiClient } from '../../../src/api';
 import { OrderStatus } from '@ownlocal/types';
+import { LiveRouteMap } from '../../../src/components/LiveRouteMap';
 
 // Steps in delivery lifecycle
 const ORDER_STEPS: Array<{ key: string; label: string; icon: string; matchStatuses: OrderStatus[] }> = [
@@ -314,101 +315,20 @@ export default function OrderTrackingScreen() {
           </View>
         )}
 
-        {/* Live In-App Delivery Route Radar Map */}
+        {/* Interactive OpenStreetMap Route Tracker */}
         {!isCancelled && !isDelivered && (
-          <View style={styles.mapRadarCard}>
-            <View style={styles.mapHeaderRow}>
-              <View>
-                <Text style={styles.mapTitle}>🗺️ Live Delivery Route Tracker</Text>
-                <Text style={styles.mapSubtitle}>Real-time GPS dispatch & movement</Text>
-              </View>
-              <View style={styles.radarLivePill}>
-                <View style={styles.pulseDot} />
-                <Text style={styles.radarLiveText}>LIVE GPS</Text>
-              </View>
-            </View>
-
-            {/* Visual Route Corridor */}
-            <View style={styles.routeCorridor}>
-              {/* Point 1: Store */}
-              <View style={styles.corridorPoint}>
-                <View style={[styles.corridorIconBox, { backgroundColor: '#e0f2fe', borderColor: '#0284c7' }]}>
-                  <Text style={{ fontSize: 16 }}>🏪</Text>
-                </View>
-                <View style={{ flex: 1, marginLeft: 12 }}>
-                  <Text style={styles.corridorPointTitle}>STORE: {order.merchant_name || 'Merchant'}</Text>
-                  <Text style={styles.corridorPointSub}>{order.merchant_address || 'Ilkal Store'}</Text>
-                </View>
-                <Text style={styles.corridorStatusText}>
-                  {order.status === 'CREATED' || order.status === 'MERCHANT_CONFIRMATION_PENDING'
-                    ? 'Awaiting Accept'
-                    : 'Confirmed'}
-                </Text>
-              </View>
-
-              {/* Connecting Line with Moving Motorcycle */}
-              <View style={styles.corridorTrackLine}>
-                <View style={styles.corridorTrackDashes} />
-                {order.rider_id ? (
-                  <View style={styles.riderMotorcycleBadge}>
-                    <Text style={{ fontSize: 18 }}>🛵</Text>
-                    <View style={styles.riderPillMini}>
-                      <Text style={styles.riderPillMiniText}>{order.rider_name || 'Rider'}</Text>
-                    </View>
-                  </View>
-                ) : (
-                  <View style={styles.awaitingRiderBadge}>
-                    <Text style={styles.awaitingRiderText}>Finding nearby rider...</Text>
-                  </View>
-                )}
-              </View>
-
-              {/* Point 2: Customer Destination */}
-              <View style={styles.corridorPoint}>
-                <View style={[styles.corridorIconBox, { backgroundColor: '#fef3c7', borderColor: '#f59e0b' }]}>
-                  <Text style={{ fontSize: 16 }}>🏠</Text>
-                </View>
-                <View style={{ flex: 1, marginLeft: 12 }}>
-                  <Text style={styles.corridorPointTitle}>DELIVERY DESTINATION</Text>
-                  <Text style={styles.corridorPointSub} numberOfLines={1}>{order.delivery_address}</Text>
-                </View>
-                <Text style={styles.corridorStatusText}>
-                  {order.status === 'OUT_FOR_DELIVERY' ? 'En Route 🚀' : 'OTP Protected'}
-                </Text>
-              </View>
-            </View>
-
-            {/* GPS Telemetry Bar */}
-            <View style={styles.telemetryBar}>
-              <View style={styles.telemetryCol}>
-                <Text style={styles.telemetryLabel}>DISPATCH STATUS</Text>
-                <Text style={styles.telemetryVal}>
-                  {order.status === 'OUT_FOR_DELIVERY'
-                    ? 'Out for Delivery'
-                    : order.rider_id
-                    ? 'Rider Claimed'
-                    : 'Dispatch Pool'}
-                </Text>
-              </View>
-              <View style={styles.telemetryDivider} />
-              <View style={styles.telemetryCol}>
-                <Text style={styles.telemetryLabel}>DELIVERY SECURITY</Text>
-                <Text style={styles.telemetryVal}>OTP Protected (****)</Text>
-              </View>
-            </View>
-
-            {/* Action to launch full turn-by-turn map in phone */}
-            <TouchableOpacity
-              style={styles.openExternalMapBtn}
-              onPress={() => {
-                const dest = encodeURIComponent(order.delivery_address + ', Ilkal');
-                Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${dest}`);
-              }}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.openExternalMapText}>🧭 Open Full Turn-by-Turn GPS Map →</Text>
-            </TouchableOpacity>
-          </View>
+          <LiveRouteMap
+            merchantLat={order.merchant_latitude}
+            merchantLng={order.merchant_longitude}
+            merchantName={order.merchant_name}
+            riderLat={order.rider_latitude}
+            riderLng={order.rider_longitude}
+            riderName={order.rider_name}
+            customerLat={order.delivery_latitude}
+            customerLng={order.delivery_longitude}
+            customerAddress={order.delivery_address}
+            orderStatus={order.status}
+          />
         )}
 
         {/* Delivery Address Card */}

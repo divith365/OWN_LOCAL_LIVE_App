@@ -19,7 +19,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { apiClient } from '../../src/api';
 import { OrderStatus, Product } from '@ownlocal/types';
 import { BrandHeader } from '../../src/components/BrandHeader';
-import { triggerLocalOrderAlert } from '../../src/services/notificationService';
+import { triggerLocalOrderAlert, syncPushTokenWithBackend } from '../../src/services/notificationService';
 
 export default function MerchantDashboardScreen() {
   const [merchant, setMerchant] = useState<any>(null);
@@ -61,6 +61,9 @@ export default function MerchantDashboardScreen() {
       const res = await apiClient.getMerchantDashboard();
       if (res.success && res.data) {
         setMerchant(res.data.merchant);
+        if (res.data.merchant?.id) {
+          syncPushTokenWithBackend({ merchantId: res.data.merchant.id, role: 'MERCHANT' }).catch(() => null);
+        }
         setOrders(res.data.orders || []);
         setIsOpen(Boolean(res.data.merchant?.is_open));
         setSelfDeliveryEnabled(Boolean(res.data.merchant?.own_delivery_enabled));
