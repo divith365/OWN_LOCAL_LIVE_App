@@ -231,6 +231,27 @@ export default function OrderTrackingScreen() {
           )}
         </View>
 
+        {/* Celebration Banner when Merchant Confirmed */}
+        {['MERCHANT_CONFIRMED', 'PREPARING'].includes(order.status) && (
+          <View style={styles.celebrationCard}>
+            <View style={styles.celebrationLeft}>
+              <View style={styles.celebrationIconBox}>
+                <Text style={styles.celebrationIcon}>🎉</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <View style={styles.celebrationBadgeRow}>
+                  <Text style={styles.celebrationBadge}>STORE CONFIRMED</Text>
+                  <Text style={styles.celebrationSparkle}>✨</Text>
+                </View>
+                <Text style={styles.celebrationTitle}>Good news! Store confirmed your order</Text>
+                <Text style={styles.celebrationSubtitle}>
+                  {order.merchant_name || 'Ayodhya Hotel'} accepted your dishes and kitchen preparation has started.
+                </Text>
+              </View>
+            </View>
+          </View>
+        )}
+
         {/* Delivery OTP Card (Crucial Security Handshake) */}
         {!isCancelled && !isDelivered && (
           <View style={styles.otpCard}>
@@ -771,5 +792,65 @@ const styles = StyleSheet.create({
   homeBtnText: {
     ...Typography.bodyBold,
     color: Colors.slate700,
+  },
+  celebrationCard: {
+    backgroundColor: '#f0fdf4',
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1.5,
+    borderColor: '#86efac',
+    padding: Spacing.md,
+    shadowColor: '#16a34a',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  celebrationLeft: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  celebrationIconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#dcfce7',
+    borderWidth: 1,
+    borderColor: '#86efac',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  celebrationIcon: {
+    fontSize: 22,
+  },
+  celebrationBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 4,
+  },
+  celebrationBadge: {
+    backgroundColor: '#16a34a',
+    color: '#ffffff',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: BorderRadius.full,
+    overflow: 'hidden',
+  },
+  celebrationSparkle: {
+    fontSize: 14,
+  },
+  celebrationTitle: {
+    ...Typography.subheadBold,
+    color: '#14532d',
+    marginBottom: 2,
+  },
+  celebrationSubtitle: {
+    ...Typography.caption,
+    color: '#166534',
+    lineHeight: 18,
   },
 });

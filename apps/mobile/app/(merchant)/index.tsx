@@ -9,7 +9,9 @@ import {
   ActivityIndicator,
   Alert,
   RefreshControl,
+  Modal,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Spacing, BorderRadius, Typography, getOrderStatusConfig } from '@ownlocal/ui';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { apiClient } from '../../src/api';
@@ -26,6 +28,11 @@ export default function MerchantDashboardScreen() {
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [togglingStockId, setTogglingStockId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'INCOMING' | 'PREPARING' | 'COMPLETED' | 'STOCK'>('INCOMING');
+  const [celebrationModal, setCelebrationModal] = useState<{
+    visible: boolean;
+    orderNumber: string;
+    prepTime: number;
+  } | null>(null);
 
   const prevPendingCountRef = useRef<number>(0);
   const pollTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -104,7 +111,12 @@ export default function MerchantDashboardScreen() {
     }
   };
 
-  const handleUpdateStatus = async (orderId: string, nextStatus: OrderStatus, prepTimeMinutes?: number) => {
+  const handleUpdateStatus = async (
+    orderId: string,
+    nextStatus: OrderStatus,
+    prepTimeMinutes?: number,
+    orderNumber?: string
+  ) => {
     setProcessingId(orderId);
     try {
       const note = prepTimeMinutes
@@ -112,7 +124,15 @@ export default function MerchantDashboardScreen() {
         : `Status updated to ${nextStatus}`;
       const res = await apiClient.updateOrderStatus(orderId, nextStatus, note);
       if (res.success) {
-        Alert.alert('Success', `Order marked as ${nextStatus.replace(/_/g, ' ')}`);
+        if (nextStatus === 'MERCHANT_CONFIRMED') {
+          setCelebrationModal({
+            visible: true,
+            orderNumber: orderNumber || orderId,
+            prepTime: prepTimeMinutes || 15,
+          });
+        } else {
+          Alert.alert('Status Updated', `Order marked as ${nextStatus.replace(/_/g, ' ')}`);
+        }
         fetchDashboardData(false);
       } else {
         Alert.alert('Transition Error', res.error?.message || 'Cannot update order status');
@@ -124,14 +144,14 @@ export default function MerchantDashboardScreen() {
     }
   };
 
-  const handleAcceptPrompt = (orderId: string) => {
+  const handleAcceptPrompt = (order: any) => {
     Alert.alert(
       'Accept Order',
-      'Select estimated preparation time in kitchen:',
+      `Confirm order #${order.order_number} and select kitchen prep time:`,
       [
-        { text: '15 mins', onPress: () => handleUpdateStatus(orderId, 'MERCHANT_CONFIRMED', 15) },
-        { text: '25 mins', onPress: () => handleUpdateStatus(orderId, 'MERCHANT_CONFIRMED', 25) },
-        { text: '40 mins', onPress: () => handleUpdateStatus(orderId, 'MERCHANT_CONFIRMED', 40) },
+        { text: '15 mins', onPress: () => handleUpdateStatus(order.id, 'MERCHANT_CONFIRMED', 15, order.order_number) },
+        { text: '25 mins', onPress: () => handleUpdateStatus(order.id, 'MERCHANT_CONFIRMED', 25, order.order_number) },
+        { text: '40 mins', onPress: () => handleUpdateStatus(order.id, 'MERCHANT_CONFIRMED', 40, order.order_number) },
         { text: 'Cancel', style: 'cancel' },
       ]
     );
@@ -345,11 +365,17 @@ export default function MerchantDashboardScreen() {
                       <Text style={styles.orderNumberText}>{order.order_number}</Text>
                       <Text style={styles.customerText}>📅 {order.created_at}</Text>
                     </View>
-                    <View style={[styles.statusBadge, { backgroundColor: statusConfig.bg }]}>
-                      <Text style={[styles.statusBadgeText, { color: statusConfig.text }]}>
-                        {statusConfig.label}
-                      </Text>
-                    </View>
+                    {order.status === 'MERCHANT_CONFIRMED' ? (
+                      <View style={styles.celebrationStatusBadge}>
+                        <Text style={styles.celebrationStatusText}>CONFIRMED ✓ 🎉</Text>
+                      </View>
+                    ) : (
+                      <View style={[styles.statusBadge, { backgroundColor: statusConfig.bg }]}>
+                        <Text style={[styles.statusBadgeText, { color: statusConfig.text }]}>
+                          {statusConfig.label}
+                        </Text>
+                      </View>
+                    )}
                   </View>
 
                   <View style={styles.divider} />
@@ -395,7 +421,7 @@ export default function MerchantDashboardScreen() {
                       <TouchableOpacity
                         style={[styles.actionBtn, styles.acceptBtn]}
                         disabled={isProcessing}
-                        onPress={() => handleAcceptPrompt(order.id)}
+                        onPress={() => handleAcceptPrompt(order)}
                       >
                         {isProcessing ? (
                           <ActivityIndicator color={Colors.white} size="small" />
@@ -427,7 +453,71 @@ export default function MerchantDashboardScreen() {
           )}
         </View>
       )}
-    </ScrollView>
+      </ScrollView>
+
+      {/* Celebration Modal when Order is Marked as Merchant Confirmed */}
+      {celebrationModal?.visible && (
+        <Modal
+          visible={celebrationModal.visible}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => setCelebrationModal(null)}
+        >
+          <View style={styles.modalBackdrop}>
+            <LinearGradient
+              colors={['#044229', '#065f46', '#047857']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.celebrationCard}
+            >
+              {/* Confetti / Sparkle Cluster */}
+              <View style={styles.celebrationEmojiRow}>
+                <Text style={styles.celebrationSparkle}>✨</Text>
+                <View style={styles.celebrationIconCircle}>
+                  <Text style={styles.celebrationBigEmoji}>🎉</Text>
+                </View>
+                <Text style={styles.celebrationSparkle}>✨</Text>
+              </View>
+
+              {/* Eyebrow & Badges */}
+              <View style={styles.celebrationPill}>
+                <Text style={styles.celebrationPillText}>★ ORDER CONFIRMED ★</Text>
+              </View>
+
+              {/* Main Headline */}
+              <Text style={styles.celebrationTitle}>Kitchen Confirmed!</Text>
+              <Text style={styles.celebrationSub}>
+                Order #{celebrationModal.orderNumber} is marked as confirmed and kitchen prep has officially started!
+              </Text>
+
+              {/* Details Box with Gold Accent */}
+              <View style={styles.celebrationDetailsBox}>
+                <View style={styles.celebrationDetailRow}>
+                  <Text style={styles.celebrationDetailLabel}>Kitchen Prep Time</Text>
+                  <Text style={styles.celebrationDetailValue}>⏱️ {celebrationModal.prepTime} Mins</Text>
+                </View>
+                <View style={styles.celebrationDetailRow}>
+                  <Text style={styles.celebrationDetailLabel}>Rider Dispatch</Text>
+                  <Text style={[styles.celebrationDetailValue, { color: '#6ee7b7' }]}>🛵 Notified nearby</Text>
+                </View>
+              </View>
+
+              <Text style={styles.celebrationFootnote}>
+                Dishes will move to &quot;Ready for Pickup&quot; once prepared.
+              </Text>
+
+              {/* Action Button */}
+              <TouchableOpacity
+                style={styles.celebrationActionBtn}
+                onPress={() => setCelebrationModal(null)}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.celebrationActionText}>Start Cooking & View Orders →</Text>
+              </TouchableOpacity>
+            </LinearGradient>
+          </View>
+        </Modal>
+      )}
     </SafeAreaView>
   );
 }
@@ -723,5 +813,139 @@ const styles = StyleSheet.create({
   stockSwitchCol: {
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  celebrationStatusBadge: {
+    backgroundColor: '#eaf8f2',
+    borderWidth: 1,
+    borderColor: '#10b981',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  celebrationStatusText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#08774c',
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(7, 30, 56, 0.78)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  celebrationCard: {
+    width: '100%',
+    maxWidth: 360,
+    borderRadius: 22,
+    padding: 24,
+    alignItems: 'center',
+    shadowColor: '#10b981',
+    shadowOpacity: 0.35,
+    shadowRadius: 20,
+    elevation: 10,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255, 255, 255, 0.25)',
+  },
+  celebrationEmojiRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 8,
+  },
+  celebrationIconCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#ffffff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+  },
+  celebrationBigEmoji: {
+    fontSize: 34,
+  },
+  celebrationSparkle: {
+    fontSize: 22,
+  },
+  celebrationPill: {
+    backgroundColor: 'rgba(251, 191, 36, 0.2)',
+    borderWidth: 1,
+    borderColor: '#fbbf24',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 20,
+    marginTop: 8,
+    marginBottom: 8,
+  },
+  celebrationPillText: {
+    fontSize: 10,
+    fontWeight: '900',
+    color: '#fbbf24',
+    letterSpacing: 1.2,
+  },
+  celebrationTitle: {
+    fontSize: 22,
+    fontWeight: '900',
+    color: '#ffffff',
+    textAlign: 'center',
+    marginTop: 4,
+  },
+  celebrationSub: {
+    fontSize: 13,
+    color: 'rgba(255, 255, 255, 0.92)',
+    textAlign: 'center',
+    lineHeight: 18,
+    marginTop: 6,
+    marginBottom: 16,
+  },
+  celebrationDetailsBox: {
+    width: '100%',
+    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.18)',
+    borderRadius: 14,
+    padding: 14,
+    gap: 10,
+    marginBottom: 16,
+  },
+  celebrationDetailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  celebrationDetailLabel: {
+    fontSize: 12,
+    color: 'rgba(255, 255, 255, 0.8)',
+    fontWeight: '600',
+  },
+  celebrationDetailValue: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#ffffff',
+  },
+  celebrationFootnote: {
+    fontSize: 11,
+    color: 'rgba(255, 255, 255, 0.75)',
+    textAlign: 'center',
+    marginBottom: 18,
+  },
+  celebrationActionBtn: {
+    width: '100%',
+    backgroundColor: '#ff8a16',
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  celebrationActionText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#ffffff',
   },
 });

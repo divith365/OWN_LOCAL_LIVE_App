@@ -9,8 +9,9 @@ export function getOrderStatusConfig(status: OrderStatus): { label: string; bg: 
     case 'MERCHANT_CONFIRMATION_PENDING':
       return { label: 'Awaiting Merchant', bg: Colors.warningLight, text: Colors.warning };
     case 'MERCHANT_CONFIRMED':
+      return { label: 'Store Confirmed 🎉', bg: '#eaf8f2', text: '#08774c' };
     case 'PREPARING':
-      return { label: 'Preparing', bg: Colors.infoLight, text: Colors.info };
+      return { label: 'Kitchen Preparing 🍳', bg: '#fff0da', text: '#a55a00' };
     case 'RIDER_ASSIGNMENT_PENDING':
     case 'RIDER_ASSIGNED':
       return { label: 'Rider Assigned', bg: Colors.infoLight, text: Colors.info };
