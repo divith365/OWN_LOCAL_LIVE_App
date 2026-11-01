@@ -114,7 +114,7 @@ export default function AdminDashboardScreen() {
         status: 'approved',
       });
       if (res.success) {
-        Alert.alert('Store Onboarded! 🎉', 'Store is now live in Ilkal marketplace!');
+        Alert.alert('Store Onboarded! 🎉', 'Store is now live in marketplace!');
         setShowAddModal(false);
         setNewBusinessName('');
         setNewPhone('');
@@ -340,7 +340,7 @@ export default function AdminDashboardScreen() {
     return (
       <View style={[styles.container, styles.center]}>
         <ActivityIndicator size="large" color={Colors.primary} />
-        <Text style={styles.loadingText}>Connecting to Ilkal Control Tower...</Text>
+        <Text style={styles.loadingText}>Connecting to Platform Control Tower...</Text>
       </View>
     );
   }
@@ -355,7 +355,6 @@ export default function AdminDashboardScreen() {
       >
       {/* Header Banner */}
       <View style={styles.headerCard}>
-        <Text style={styles.townTag}>📍 {metrics.town?.toUpperCase()} LIVE OPERATIONS</Text>
         <Text style={styles.title}>Town Operations Control Tower</Text>
         <Text style={styles.subtitle}>Super Admin Live Governance • Cloudflare D1 Backend</Text>
       </View>
@@ -383,7 +382,7 @@ export default function AdminDashboardScreen() {
         <View style={styles.kpiCard}>
           <Text style={styles.kpiVal}>{metrics.merchants_count}</Text>
           <Text style={styles.kpiLabel}>Approved Stores</Text>
-          <Text style={styles.kpiChange}>Ilkal Commercial</Text>
+          <Text style={styles.kpiChange}>Active Merchant Base</Text>
         </View>
       </View>
 
@@ -541,7 +540,7 @@ export default function AdminDashboardScreen() {
             <View style={styles.modalHeaderRow}>
               <View>
                 <Text style={styles.modalTitle}>Onboard New Store</Text>
-                <Text style={styles.modalSub}>Ilkal Town Merchant Directory</Text>
+                <Text style={styles.modalSub}>Town Merchant Directory</Text>
               </View>
               <TouchableOpacity
                 onPress={() => setShowAddModal(false)}
@@ -696,7 +695,7 @@ export default function AdminDashboardScreen() {
             <View style={styles.modalHeaderRow}>
               <View>
                 <Text style={styles.modalTitle}>Onboard Delivery Rider</Text>
-                <Text style={styles.modalSub}>Add rider to Ilkal town delivery fleet</Text>
+                <Text style={styles.modalSub}>Add rider to town delivery fleet</Text>
               </View>
               <TouchableOpacity
                 onPress={() => setShowAddRiderModal(false)}
@@ -943,7 +942,7 @@ export default function AdminDashboardScreen() {
                 <View style={styles.orderAuditTop}>
                   <View>
                     <Text style={styles.orderNumber}>{o.order_number}</Text>
-                    <Text style={styles.merchantAuditName}>{o.merchant_name || 'Ilkal Store'}</Text>
+                    <Text style={styles.merchantAuditName}>{o.merchant_name || 'Store'}</Text>
                   </View>
                   <View style={[styles.statusBadge, { backgroundColor: statusConfig.bg }]}>
                     <Text style={[styles.statusBadgeText, { color: statusConfig.text }]}>
