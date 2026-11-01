@@ -9,6 +9,11 @@
     "splash": {
       "backgroundColor": "#059669"
     },
+    "platforms": [
+      "ios",
+      "android",
+      "web"
+    ],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.ownlocal.live",
