@@ -211,8 +211,37 @@ export class OwnlocalApiClient {
     });
   }
 
-  async getRiderActiveJob(): Promise<ApiResponse<{ rider: any; activeJob: any }>> {
-    return this.request('/api/rider/active-job');
+  async getRiderConsole(riderId?: string): Promise<ApiResponse<{ rider: any; activeJob: any; availableJobs: any[]; metrics: any }>> {
+    const query = riderId ? `?rider_id=${riderId}` : '';
+    return this.request(`/api/rider/console${query}`);
+  }
+
+  async riderAcceptJob(orderId: string, riderId?: string): Promise<ApiResponse<any>> {
+    return this.request('/api/rider/accept-job', {
+      method: 'POST',
+      body: JSON.stringify({ order_id: orderId, rider_id: riderId }),
+    });
+  }
+
+  async riderPickupJob(orderId: string): Promise<ApiResponse<any>> {
+    return this.request('/api/rider/pickup-job', {
+      method: 'POST',
+      body: JSON.stringify({ order_id: orderId }),
+    });
+  }
+
+  async riderToggleDuty(online: boolean, riderId?: string): Promise<ApiResponse<any>> {
+    return this.request('/api/rider/toggle-duty', {
+      method: 'POST',
+      body: JSON.stringify({ online, rider_id: riderId }),
+    });
+  }
+
+  async riderUpdateLocation(latitude: number, longitude: number, riderId?: string): Promise<ApiResponse<any>> {
+    return this.request('/api/rider/location', {
+      method: 'POST',
+      body: JSON.stringify({ latitude, longitude, rider_id: riderId }),
+    });
   }
 
   async getAdminMetrics(): Promise<ApiResponse<any>> {

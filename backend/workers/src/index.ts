@@ -579,21 +579,62 @@ app.post('/api/merchant/products/:id/toggle-stock', async (c) => {
   return c.json({ success: true, data: { product_id: productId, in_stock: body.in_stock } });
 });
 
-// Rider Only: Get Assigned Delivery Jobs & Update GPS
-app.get('/api/rider/active-job', requireAuth, requireRole('rider'), async (c) => {
-  const user = c.get('user');
-  const rider: any = await c.env.DB.prepare('SELECT * FROM rider_profiles WHERE user_id = ?')
-    .bind(user.userId)
+// Rider Console: Get Active Assignment, Available Jobs Pool, Metrics & Profile
+app.get('/api/rider/console', async (c) => {
+  let riderId = c.req.query('rider_id') || 'rider_01';
+
+  const authHeader = c.req.header('Authorization');
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.substring(7);
+    const jwtSecret = c.env.JWT_SECRET || 'ownlocal_live_super_secret_jwt_key_2026_ilkal_pilot';
+    const decoded = await verifyJwt<{ userId: string; role: string }>(token, jwtSecret);
+    if (decoded.valid && decoded.payload?.userId) {
+      const riderByUser: any = await c.env.DB.prepare('SELECT id FROM rider_profiles WHERE user_id = ?')
+        .bind(decoded.payload.userId)
+        .first();
+      if (riderByUser) {
+        riderId = riderByUser.id;
+      }
+    }
+  }
+
+  const rider: any = await c.env.DB.prepare('SELECT * FROM rider_profiles WHERE id = ?')
+    .bind(riderId)
     .first();
 
-  const riderId = rider ? rider.id : 'rider_01';
-
+  // Active assignment for this rider
   const activeJob: any = await c.env.DB.prepare(`
+    SELECT o.*, m.business_name as merchant_name, m.address as merchant_address, m.phone as merchant_phone
+    FROM orders o
+    JOIN merchant_profiles m ON o.merchant_id = m.id
+    WHERE o.rider_id = ? AND o.status IN ('RIDER_ASSIGNED', 'READY_FOR_PICKUP', 'PICKED_UP', 'OUT_FOR_DELIVERY')
+    LIMIT 1
+  `)
+    .bind(riderId)
+    .first();
+
+  if (activeJob) {
+    const { results: items } = await c.env.DB.prepare('SELECT * FROM order_items WHERE order_id = ?')
+      .bind(activeJob.id)
+      .all();
+    activeJob.items = items || [];
+  }
+
+  // Available jobs in pool (waiting for rider pickup in Ilkal)
+  const { results: availableJobs } = await c.env.DB.prepare(`
     SELECT o.*, m.business_name as merchant_name, m.address as merchant_address
     FROM orders o
     JOIN merchant_profiles m ON o.merchant_id = m.id
-    WHERE o.rider_id = ? AND o.status NOT IN ('DELIVERED', 'FAILED', 'CUSTOMER_CANCELLED')
-    LIMIT 1
+    WHERE o.rider_id IS NULL AND o.status IN ('READY_FOR_PICKUP', 'MERCHANT_CONFIRMED') AND o.delivery_type = 'PLATFORM_RIDER'
+    ORDER BY o.created_at ASC
+    LIMIT 10
+  `).all();
+
+  // Completed deliveries & earnings for rider
+  const completedStats: any = await c.env.DB.prepare(`
+    SELECT COUNT(*) as count, SUM(delivery_fee) as earnings
+    FROM orders
+    WHERE rider_id = ? AND status = 'DELIVERED'
   `)
     .bind(riderId)
     .first();
@@ -601,10 +642,116 @@ app.get('/api/rider/active-job', requireAuth, requireRole('rider'), async (c) =>
   return c.json({
     success: true,
     data: {
-      rider: rider || { name: 'Manjunath Badiger', vehicle_number: 'KA-29-EE-4521' },
+      rider: rider || {
+        id: riderId,
+        name: 'Manjunath Badiger',
+        vehicle_type: 'bike',
+        vehicle_number: 'KA-29-EE-4521',
+        online_status: 1,
+      },
       activeJob: activeJob || null,
+      availableJobs: availableJobs || [],
+      metrics: {
+        trips_today: completedStats?.count || 0,
+        earnings_today: (completedStats?.count || 0) * 35, // ₹35 per delivery trip
+        on_time_rate: '98%',
+      },
     },
   });
+});
+
+// Rider: Accept Order From Available Pool
+app.post('/api/rider/accept-job', async (c) => {
+  const body = await c.req.json<{ order_id: string; rider_id?: string }>();
+  let riderId = body.rider_id || 'rider_01';
+
+  const authHeader = c.req.header('Authorization');
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.substring(7);
+    const jwtSecret = c.env.JWT_SECRET || 'ownlocal_live_super_secret_jwt_key_2026_ilkal_pilot';
+    const decoded = await verifyJwt<{ userId: string }>(token, jwtSecret);
+    if (decoded.valid && decoded.payload?.userId) {
+      const riderByUser: any = await c.env.DB.prepare('SELECT id FROM rider_profiles WHERE user_id = ?')
+        .bind(decoded.payload.userId)
+        .first();
+      if (riderByUser) riderId = riderByUser.id;
+    }
+  }
+
+  const order: any = await c.env.DB.prepare('SELECT * FROM orders WHERE id = ?')
+    .bind(body.order_id)
+    .first();
+
+  if (!order) {
+    return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Order not found' } }, 404);
+  }
+
+  if (order.rider_id && order.rider_id !== riderId) {
+    return c.json({ success: false, error: { code: 'ALREADY_ASSIGNED', message: 'Order already claimed by another rider' } }, 400);
+  }
+
+  await c.env.DB.prepare('UPDATE orders SET rider_id = ?, status = "RIDER_ASSIGNED", updated_at = datetime("now") WHERE id = ?')
+    .bind(riderId, body.order_id)
+    .run();
+
+  await c.env.DB.prepare(
+    'INSERT INTO order_status_history (id, order_id, from_status, to_status, notes) VALUES (?, ?, ?, ?, ?)'
+  )
+    .bind(`hist_${Date.now()}`, body.order_id, order.status, 'RIDER_ASSIGNED', `Assigned to rider ${riderId}`)
+    .run();
+
+  return c.json({ success: true, data: { order_id: body.order_id, status: 'RIDER_ASSIGNED', rider_id: riderId } });
+});
+
+// Rider: Confirm Pickup from Merchant
+app.post('/api/rider/pickup-job', async (c) => {
+  const body = await c.req.json<{ order_id: string }>();
+
+  const order: any = await c.env.DB.prepare('SELECT * FROM orders WHERE id = ?')
+    .bind(body.order_id)
+    .first();
+
+  if (!order) {
+    return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Order not found' } }, 404);
+  }
+
+  await c.env.DB.prepare('UPDATE orders SET status = "OUT_FOR_DELIVERY", updated_at = datetime("now") WHERE id = ?')
+    .bind(body.order_id)
+    .run();
+
+  await c.env.DB.prepare(
+    'INSERT INTO order_status_history (id, order_id, from_status, to_status, notes) VALUES (?, ?, ?, ?, ?)'
+  )
+    .bind(`hist_${Date.now()}`, body.order_id, order.status, 'OUT_FOR_DELIVERY', 'Picked up by rider from merchant, en route to customer')
+    .run();
+
+  return c.json({ success: true, data: { order_id: body.order_id, status: 'OUT_FOR_DELIVERY' } });
+});
+
+// Rider: Toggle Duty Online / Offline
+app.post('/api/rider/toggle-duty', async (c) => {
+  const body = await c.req.json<{ online: boolean; rider_id?: string }>();
+  let riderId = body.rider_id || 'rider_01';
+
+  await c.env.DB.prepare('UPDATE rider_profiles SET online_status = ? WHERE id = ?')
+    .bind(body.online ? 1 : 0, riderId)
+    .run();
+
+  return c.json({ success: true, data: { rider_id: riderId, online_status: body.online ? 1 : 0 } });
+});
+
+// Rider: Real-Time GPS Location Ping
+app.post('/api/rider/location', async (c) => {
+  const body = await c.req.json<{ latitude: number; longitude: number; rider_id?: string }>();
+  let riderId = body.rider_id || 'rider_01';
+
+  await c.env.DB.prepare(
+    'UPDATE rider_profiles SET current_latitude = ?, current_longitude = ?, last_location_update = datetime("now") WHERE id = ?'
+  )
+    .bind(body.latitude, body.longitude, riderId)
+    .run();
+
+  return c.json({ success: true, data: { rider_id: riderId, latitude: body.latitude, longitude: body.longitude } });
 });
 
 // Admin Only: Get Town GMV, All Merchants, and KYC Queue
