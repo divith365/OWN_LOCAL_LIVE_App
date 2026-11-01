@@ -20,7 +20,9 @@
       "package": "com.ownlocal.live",
       "permissions": [
         "ACCESS_COARSE_LOCATION",
-        "ACCESS_FINE_LOCATION"
+        "ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
       ]
     },
     "web": {
@@ -34,6 +36,15 @@
           "locationWhenInUsePermission": "OWNLOCAL LIVE needs your location to discover local stores and track deliveries in Ilkal."
         }
       ]
-    ]
+    ],
+    "extra": {
+      "router": {
+        "origin": false
+      },
+      "eas": {
+        "projectId": "b051aad0-f159-4dfd-a1c4-48041f299458"
+      }
+    },
+    "owner": "arunuvce"
   }
 }
