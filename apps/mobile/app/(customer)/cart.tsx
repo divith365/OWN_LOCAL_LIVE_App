@@ -16,12 +16,6 @@ import { useCart } from '../../src/context/CartContext';
 import { apiClient } from '../../src/api';
 import { useAuth } from '../../src/context/AuthContext';
 
-const ILKAL_PRESET_ADDRESSES = [
-  'Gandhi Chowk, Near Basaveshwar Temple, Ilkal - 587125',
-  'Main Bazaar Road, Near Vijaya Mahantesh Math, Ilkal - 587125',
-  'Station Road, Opposite KSRTC Bus Stand, Ilkal - 587125',
-];
-
 export default function CartScreen() {
   const router = useRouter();
   const { user } = useAuth();
@@ -37,7 +31,8 @@ export default function CartScreen() {
   } = useCart();
 
   const [deliveryType, setDeliveryType] = useState<'PLATFORM_RIDER' | 'MERCHANT_SELF' | 'STORE_PICKUP'>('PLATFORM_RIDER');
-  const [address, setAddress] = useState(ILKAL_PRESET_ADDRESSES[0]);
+  const [address, setAddress] = useState('');
+  const [detectingGpsAddress, setDetectingGpsAddress] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<'UPI' | 'COD' | 'CARD'>('UPI');
   const [orderNotes, setOrderNotes] = useState('');
   const [loading, setLoading] = useState(false);
@@ -45,30 +40,88 @@ export default function CartScreen() {
   const [merchantProfile, setMerchantProfile] = useState<any>(null);
   const [customerCoords, setCustomerCoords] = useState<{ lat: number; lng: number } | null>(null);
 
-  // Fetch merchant profile with location distance
-  useEffect(() => {
-    if (!merchantId) return;
-
-    Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced })
-      .then((pos) => {
-        const coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-        setCustomerCoords(coords);
-        return apiClient.getMerchant(merchantId, coords);
-      })
-      .catch(() => apiClient.getMerchant(merchantId))
-      .then((res) => {
-        if (res.success && res.data) {
-          setMerchantProfile(res.data);
-          // If merchant does not support self-delivery for this location, ensure deliveryType is not MERCHANT_SELF
-          if (!res.data.can_self_deliver && deliveryType === 'MERCHANT_SELF') {
-            setDeliveryType('PLATFORM_RIDER');
-          }
-          // If outside overall service radius, only STORE_PICKUP is deliverable
-          if (res.data.distanceKm !== null && res.data.distanceKm !== undefined && res.data.distanceKm > (res.data.service_radius_km || 5.0)) {
-            setDeliveryType('STORE_PICKUP');
-          }
-        }
+  const handleDetectAddress = async () => {
+    setDetectingGpsAddress(true);
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Needed', 'Please allow location permission to auto-detect your delivery address.');
+        return;
+      }
+      const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      const coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+      setCustomerCoords(coords);
+      const [rev] = await Location.reverseGeocodeAsync({
+        latitude: pos.coords.latitude,
+        longitude: pos.coords.longitude,
       });
+      if (rev) {
+        const parts = [
+          rev.name,
+          rev.street,
+          rev.subregion || rev.district || rev.city,
+          rev.postalCode ? `${rev.postalCode}` : '',
+        ].filter(Boolean);
+        setAddress(parts.join(', '));
+      } else {
+        setAddress(`GPS: ${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)}`);
+      }
+    } catch {
+      Alert.alert('Location Error', 'Could not detect location. Please type your delivery address.');
+    } finally {
+      setDetectingGpsAddress(false);
+    }
+  };
+
+  // Fetch merchant profile with location distance & detect initial GPS
+  useEffect(() => {
+    (async () => {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status === 'granted') {
+          const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+          const coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+          setCustomerCoords(coords);
+
+          if (merchantId) {
+            const res = await apiClient.getMerchant(merchantId, coords);
+            if (res.success && res.data) {
+              setMerchantProfile(res.data);
+              if (!res.data.can_self_deliver && deliveryType === 'MERCHANT_SELF') {
+                setDeliveryType('PLATFORM_RIDER');
+              }
+              if (res.data.distanceKm !== null && res.data.distanceKm !== undefined && res.data.distanceKm > (res.data.service_radius_km || 5.0)) {
+                setDeliveryType('STORE_PICKUP');
+              }
+            }
+          }
+
+          // Reverse geocode to auto-fill address if empty
+          const [rev] = await Location.reverseGeocodeAsync({
+            latitude: coords.lat,
+            longitude: coords.lng,
+          });
+          if (rev) {
+            const parts = [
+              rev.name,
+              rev.street,
+              rev.subregion || rev.district || rev.city,
+              rev.postalCode ? `${rev.postalCode}` : '',
+            ].filter(Boolean);
+            setAddress((prev) => (prev ? prev : parts.join(', ')));
+          }
+        } else if (merchantId) {
+          const res = await apiClient.getMerchant(merchantId);
+          if (res.success && res.data) setMerchantProfile(res.data);
+        }
+      } catch {
+        if (merchantId) {
+          apiClient.getMerchant(merchantId).then((res) => {
+            if (res.success && res.data) setMerchantProfile(res.data);
+          });
+        }
+      }
+    })();
   }, [merchantId]);
 
   // Dynamic delivery fee calculation
@@ -82,7 +135,7 @@ export default function CartScreen() {
     }
 
     if (!address.trim() && deliveryType !== 'STORE_PICKUP') {
-      Alert.alert('Address Required', 'Please enter a valid delivery address in Ilkal.');
+      Alert.alert('Address Required', 'Please enter a valid delivery address.');
       return;
     }
 
@@ -112,7 +165,7 @@ export default function CartScreen() {
         Alert.alert('Order Failed', res.error?.message || 'Could not place order. Please try again.');
       }
     } catch (err: any) {
-      Alert.alert('Network Error', err?.message || 'Unable to connect to Ilkal marketplace server.');
+      Alert.alert('Network Error', err?.message || 'Unable to connect to marketplace server.');
     } finally {
       setLoading(false);
     }
@@ -324,21 +377,31 @@ export default function CartScreen() {
         {/* Delivery Address (if not store pickup) */}
         {deliveryType !== 'STORE_PICKUP' && (
           <View style={styles.sectionCard}>
-            <Text style={styles.sectionHeader}>Delivery Address in Ilkal</Text>
-
-            {/* Quick preset chips */}
-            <View style={styles.presetsRow}>
-              {ILKAL_PRESET_ADDRESSES.map((preset, idx) => (
-                <TouchableOpacity
-                  key={idx}
-                  style={[styles.presetChip, address === preset && styles.presetChipActive]}
-                  onPress={() => setAddress(preset)}
-                >
-                  <Text style={[styles.presetText, address === preset && styles.presetTextActive]} numberOfLines={1}>
-                    📍 {preset.split(',')[0]}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <Text style={styles.sectionHeader}>Delivery Address</Text>
+              <TouchableOpacity
+                onPress={handleDetectAddress}
+                disabled={detectingGpsAddress}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  backgroundColor: '#f0fdf4',
+                  borderColor: '#bbf7d0',
+                  borderWidth: 1,
+                  paddingHorizontal: 10,
+                  paddingVertical: 5,
+                  borderRadius: 16,
+                }}
+              >
+                {detectingGpsAddress ? (
+                  <ActivityIndicator size="small" color="#16a34a" />
+                ) : (
+                  <>
+                    <Text style={{ fontSize: 13, marginRight: 4 }}>📍</Text>
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: '#16a34a' }}>Use Current GPS</Text>
+                  </>
+                )}
+              </TouchableOpacity>
             </View>
 
             <TextInput
@@ -347,7 +410,7 @@ export default function CartScreen() {
               numberOfLines={3}
               value={address}
               onChangeText={setAddress}
-              placeholder="Enter complete house no, street, landmark in Ilkal..."
+              placeholder="Enter complete house / flat no, street, landmark, area..."
               placeholderTextColor={Colors.textMuted}
             />
           </View>

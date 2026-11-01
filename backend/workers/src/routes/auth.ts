@@ -160,14 +160,33 @@ authRouter.post('/verify-otp', async (c) => {
       .run();
 
     user = { id: userId, phone, role, status: 'active' };
+  }
 
-    // Initialize role profile
-    if (role === 'customer') {
+  // Ensure role profile exists for user
+  if (role === 'rider') {
+    const existingRider = await c.env.DB.prepare('SELECT id FROM rider_profiles WHERE user_id = ?')
+      .bind(user.id)
+      .first();
+    if (!existingRider) {
+      const riderId = `rider_${Date.now()}`;
+      await c.env.DB.prepare(`
+        INSERT INTO rider_profiles (
+          id, user_id, name, phone, vehicle_type, vehicle_number, status, online_status, preferred_radius_km
+        ) VALUES (?, ?, ?, ?, 'bike', 'KA-29', 'approved', 1, 3.0)
+      `)
+        .bind(riderId, user.id, 'Delivery Partner', user.phone)
+        .run();
+    }
+  } else if (role === 'customer') {
+    const existingCust = await c.env.DB.prepare('SELECT id FROM customer_profiles WHERE user_id = ?')
+      .bind(user.id)
+      .first();
+    if (!existingCust) {
       await c.env.DB.prepare(`
         INSERT INTO customer_profiles (id, user_id, full_name, default_address)
-        VALUES (?, ?, 'New Customer', 'Ilkal')
+        VALUES (?, ?, 'Customer', 'Ilkal')
       `)
-        .bind(`prof_${Date.now()}`, userId)
+        .bind(`prof_${Date.now()}`, user.id)
         .run();
     }
   }
@@ -265,6 +284,35 @@ authRouter.post('/google-phone', async (c) => {
       .run();
 
     user = { id: userId, phone, role, status: 'active' };
+  }
+
+  // Ensure role profile exists for user
+  if (role === 'rider') {
+    const existingRider = await c.env.DB.prepare('SELECT id FROM rider_profiles WHERE user_id = ?')
+      .bind(user.id)
+      .first();
+    if (!existingRider) {
+      const riderId = `rider_${Date.now()}`;
+      await c.env.DB.prepare(`
+        INSERT INTO rider_profiles (
+          id, user_id, name, phone, vehicle_type, vehicle_number, status, online_status, preferred_radius_km
+        ) VALUES (?, ?, ?, ?, 'bike', 'KA-29', 'approved', 1, 3.0)
+      `)
+        .bind(riderId, user.id, 'Delivery Partner', user.phone)
+        .run();
+    }
+  } else if (role === 'customer') {
+    const existingCust = await c.env.DB.prepare('SELECT id FROM customer_profiles WHERE user_id = ?')
+      .bind(user.id)
+      .first();
+    if (!existingCust) {
+      await c.env.DB.prepare(`
+        INSERT INTO customer_profiles (id, user_id, full_name, default_address)
+        VALUES (?, ?, 'Customer', 'Ilkal')
+      `)
+        .bind(`prof_${Date.now()}`, user.id)
+        .run();
+    }
   }
 
   if (user.status !== 'active') {

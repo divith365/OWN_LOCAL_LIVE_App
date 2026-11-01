@@ -4,7 +4,7 @@ import { apiClient } from '../api';
 
 export const RIDER_BG_LOCATION_TASK = 'OWNLOCAL_RIDER_BG_LOCATION';
 
-let activeRiderId: string = 'rider_01';
+let activeRiderId: string = '';
 let foregroundSubscription: Location.LocationSubscription | null = null;
 let heartbeatInterval: any = null;
 
@@ -14,7 +14,7 @@ TaskManager.defineTask(RIDER_BG_LOCATION_TASK, async ({ data, error }: any) => {
     console.error('Background location task error:', error);
     return;
   }
-  if (data && data.locations && data.locations.length > 0) {
+  if (data && data.locations && data.locations.length > 0 && activeRiderId) {
     const latestLoc = data.locations[data.locations.length - 1];
     try {
       await apiClient.riderUpdateLocation(
@@ -46,11 +46,13 @@ export async function startBackgroundRiderTracking(riderId?: string): Promise<bo
       const initialPos = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.High,
       });
-      await apiClient.riderUpdateLocation(
-        initialPos.coords.latitude,
-        initialPos.coords.longitude,
-        activeRiderId
-      );
+      if (activeRiderId) {
+        await apiClient.riderUpdateLocation(
+          initialPos.coords.latitude,
+          initialPos.coords.longitude,
+          activeRiderId
+        );
+      }
     } catch (e) {
       console.warn('Initial GPS ping failed:', e);
     }
@@ -65,11 +67,13 @@ export async function startBackgroundRiderTracking(riderId?: string): Promise<bo
         },
         async (loc) => {
           try {
-            await apiClient.riderUpdateLocation(
-              loc.coords.latitude,
-              loc.coords.longitude,
-              activeRiderId
-            );
+            if (activeRiderId) {
+              await apiClient.riderUpdateLocation(
+                loc.coords.latitude,
+                loc.coords.longitude,
+                activeRiderId
+              );
+            }
           } catch (err) {
             console.warn('Foreground GPS update failed:', err);
           }
@@ -84,11 +88,13 @@ export async function startBackgroundRiderTracking(riderId?: string): Promise<bo
           const loc = await Location.getCurrentPositionAsync({
             accuracy: Location.Accuracy.Balanced,
           });
-          await apiClient.riderUpdateLocation(
-            loc.coords.latitude,
-            loc.coords.longitude,
-            activeRiderId
-          );
+          if (activeRiderId) {
+            await apiClient.riderUpdateLocation(
+              loc.coords.latitude,
+              loc.coords.longitude,
+              activeRiderId
+            );
+          }
         } catch {
           // Ignore periodic error
         }

@@ -51,8 +51,34 @@ export class OwnlocalApiClient {
         headers,
       });
 
-      const data = await response.json();
-      return data as ApiResponse<T>;
+      const rawText = await response.text();
+      let data: any = null;
+      if (rawText && rawText.trim().length > 0) {
+        try {
+          data = JSON.parse(rawText);
+        } catch {
+          // If response is not JSON (e.g. plain text or HTML 500 error from edge)
+          return {
+            success: false,
+            error: {
+              code: response.status >= 500 ? 'SERVER_ERROR' : 'HTTP_ERROR',
+              message: rawText.length > 200 ? `Server returned HTTP ${response.status}` : rawText,
+            },
+          };
+        }
+      }
+
+      if (!response.ok) {
+        return {
+          success: false,
+          error: {
+            code: data?.error?.code || `HTTP_${response.status}`,
+            message: data?.error?.message || data?.message || `Request failed with status ${response.status}`,
+          },
+        };
+      }
+
+      return (data || { success: true }) as ApiResponse<T>;
     } catch (err: any) {
       return {
         success: false,

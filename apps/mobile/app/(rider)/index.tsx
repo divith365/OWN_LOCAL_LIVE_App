@@ -83,13 +83,15 @@ export default function RiderConsoleScreen() {
         if (status === 'granted') {
           const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
           setGpsCoords({ lat: loc.coords.latitude, lng: loc.coords.longitude });
-          apiClient.riderUpdateLocation(loc.coords.latitude, loc.coords.longitude, 'rider_01');
+          if (rider?.id) {
+            apiClient.riderUpdateLocation(loc.coords.latitude, loc.coords.longitude, rider.id);
+          }
         }
       } catch (err) {
         console.warn('GPS location error', err);
       }
     })();
-  }, []);
+  }, [rider?.id]);
 
   const handleRefreshGps = async () => {
     setGpsRefreshing(true);
@@ -101,7 +103,9 @@ export default function RiderConsoleScreen() {
       }
       const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
       setGpsCoords({ lat: loc.coords.latitude, lng: loc.coords.longitude });
-      await apiClient.riderUpdateLocation(loc.coords.latitude, loc.coords.longitude, rider?.id || 'rider_01');
+      if (rider?.id) {
+        await apiClient.riderUpdateLocation(loc.coords.latitude, loc.coords.longitude, rider.id);
+      }
       Alert.alert(
         'GPS Position Refreshed! 📍',
         `Coordinates: ${loc.coords.latitude.toFixed(4)}° N, ${loc.coords.longitude.toFixed(4)}° E.\nNearby pickup orders updated for your location.`
@@ -118,7 +122,7 @@ export default function RiderConsoleScreen() {
     setPreferredRadius(radiusKm);
     setSavingRadius(true);
     try {
-      const res = await apiClient.updateRiderSettings(radiusKm, rider?.id || 'rider_01');
+      const res = await apiClient.updateRiderSettings(radiusKm, rider?.id);
       if (res.success) {
         Alert.alert(
           'Preferred Radius Updated! 🛵',
@@ -151,9 +155,9 @@ export default function RiderConsoleScreen() {
   const handleToggleDuty = async (val: boolean) => {
     setIsOnline(val);
     try {
-      await apiClient.riderToggleDuty(val, rider?.id || 'rider_01');
-      if (val) {
-        startBackgroundRiderTracking(rider?.id || 'rider_01').catch((e) => console.warn('Background tracking not started:', e));
+      await apiClient.riderToggleDuty(val, rider?.id);
+      if (val && rider?.id) {
+        startBackgroundRiderTracking(rider.id).catch((e) => console.warn('Background tracking not started:', e));
       } else {
         stopBackgroundRiderTracking().catch((e) => console.warn('Background tracking not stopped:', e));
       }
@@ -165,7 +169,7 @@ export default function RiderConsoleScreen() {
   const handleAcceptJob = async (orderId: string) => {
     setActionLoading(true);
     try {
-      const res = await apiClient.riderAcceptJob(orderId, rider?.id || 'rider_01');
+      const res = await apiClient.riderAcceptJob(orderId, rider?.id);
       if (res.success) {
         Alert.alert('Job Accepted!', 'Head over to the merchant store to collect the parcel.');
         fetchRiderData(false);

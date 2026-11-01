@@ -87,7 +87,7 @@ export default function CustomerMarketplaceScreen() {
       }
     } catch {
       // Fallback
-      setLocationName('Gandhi Chowk, Ilkal • 587125');
+      setLocationName('Tap "Detect GPS" for Live Location');
       setCoords({ lat: 15.9587, lng: 76.1264 });
     } finally {
       setLocating(false);
@@ -362,7 +362,7 @@ export default function CustomerMarketplaceScreen() {
               style={styles.townSwitchBtn}
               onPress={() => {
                 setCoords({ lat: 15.9587, lng: 76.1264 });
-                setLocationName('Gandhi Chowk, Ilkal • 587125');
+                setLocationName('Town Center');
               }}
               activeOpacity={0.8}
             >
