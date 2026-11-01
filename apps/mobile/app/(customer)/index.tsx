@@ -46,11 +46,8 @@ export default function CustomerMarketplaceScreen() {
   const [refreshing, setRefreshing] = useState(false);
 
   // GPS state
-  const [locationName, setLocationName] = useState('Gandhi Chowk, Ilkal • 587125');
-  const [coords, setCoords] = useState<{ lat: number; lng: number }>({
-    lat: 15.9587,
-    lng: 76.1264,
-  });
+  const [locationName, setLocationName] = useState('Detecting current GPS...');
+  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [locating, setLocating] = useState(false);
 
   // Request & Read Native GPS
@@ -59,8 +56,9 @@ export default function CustomerMarketplaceScreen() {
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Permission Denied', 'Using default Ilkal pilot center (Gandhi Chowk).');
+        setLocationName('Location Access Needed (Tap to Detect)');
         setLocating(false);
+        setCoords({ lat: 15.9587, lng: 76.1264 });
         return;
       }
 
@@ -74,21 +72,31 @@ export default function CustomerMarketplaceScreen() {
       };
       setCoords(newCoords);
 
-      // Reverse geocode town
+      // Reverse geocode customer's real town & neighborhood
       const [address] = await Location.reverseGeocodeAsync({
         latitude: newCoords.lat,
         longitude: newCoords.lng,
       });
       if (address) {
-        setLocationName(`${address.name || address.street || 'Current Location'}, ${address.city || 'Ilkal'} • ${address.postalCode || '587125'}`);
+        const area = address.name || address.street || address.subregion || address.district || 'Current Location';
+        const city = address.city || address.subregion || address.district || '';
+        const pin = address.postalCode ? ` • ${address.postalCode}` : '';
+        setLocationName(`${area}${city && city !== area ? `, ${city}` : ''}${pin}`);
+      } else {
+        setLocationName(`Lat: ${newCoords.lat.toFixed(3)}, Lng: ${newCoords.lng.toFixed(3)}`);
       }
     } catch {
       // Fallback
-      setLocationName('Gandhi Chowk, Ilkal • 587125');
+      setLocationName('Gandhi Chowk, Ilkal • 587125 (Pilot)');
+      setCoords({ lat: 15.9587, lng: 76.1264 });
     } finally {
       setLocating(false);
     }
   };
+
+  useEffect(() => {
+    handleDetectGps();
+  }, []);
 
   const fetchCatalog = async () => {
     try {
@@ -96,19 +104,22 @@ export default function CustomerMarketplaceScreen() {
       const res = await apiClient.getMerchants({
         category: categoryParam,
         q: searchQuery || undefined,
-        lat: coords.lat,
-        lng: coords.lng,
+        lat: coords?.lat,
+        lng: coords?.lng,
+        strict_radius: true,
       });
 
       if (res.success && res.data) {
         setMerchants(res.data);
+      } else {
+        setMerchants([]);
       }
 
       // If searching, also search products
       if (searchQuery.trim().length >= 2) {
         const pRes = await apiClient.searchProducts(searchQuery.trim(), {
-          lat: coords.lat,
-          lng: coords.lng,
+          lat: coords?.lat,
+          lng: coords?.lng,
         });
         if (pRes.success) {
           setProductResults(pRes.data || []);
@@ -118,6 +129,7 @@ export default function CustomerMarketplaceScreen() {
       }
     } catch (e) {
       console.error(e);
+      setMerchants([]);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -248,17 +260,17 @@ export default function CustomerMarketplaceScreen() {
           )}
         </View>
 
-        {/* Hero Card matching the authentic POC Gradient */}
+        {/* Hero Card */}
         <LinearGradient
           colors={['#063f7d', '#079ce9']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={styles.heroCard}
         >
-          <Text style={styles.heroEyebrow}>ILKAL PILOT • LAUNCH PREVIEW</Text>
+          <Text style={styles.heroEyebrow}>HYPERLOCAL DIRECT DELIVERY</Text>
           <Text style={styles.heroTitle}>Everything nearby,{"\n"}one simple app.</Text>
           <Text style={styles.heroDesc}>
-            Find neighbourhood shops, choose delivery and pay only when arrangements are confirmed.
+            Verified neighbourhood shops delivering within their local radius. Pay only when arrangements are confirmed.
           </Text>
           <TouchableOpacity
             style={styles.heroBtn}
@@ -307,7 +319,7 @@ export default function CustomerMarketplaceScreen() {
         {/* Product Search Matches (if any) */}
         {productResults.length > 0 && (
           <View style={styles.productMatchSection}>
-            <Text style={styles.sectionTitle}>Matching Items in Ilkal ({productResults.length})</Text>
+            <Text style={styles.sectionTitle}>Matching Items in Radius ({productResults.length})</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingVertical: 4 }}>
               {productResults.map((p) => (
                 <TouchableOpacity
@@ -328,7 +340,7 @@ export default function CustomerMarketplaceScreen() {
         {/* Stores Near You Heading */}
         <View style={styles.sectionTitleRow}>
           <Text style={styles.sectionTitle}>
-            {searchQuery ? `Stores matching "${searchQuery}"` : 'Near you in Ilkal'}
+            {searchQuery ? `Stores matching "${searchQuery}"` : 'Stores Delivering Near You'}
           </Text>
           <Text style={styles.sectionBadge}>
             {merchants.length} {merchants.length === 1 ? 'store' : 'stores'}
@@ -339,12 +351,27 @@ export default function CustomerMarketplaceScreen() {
         {loading ? (
           <View style={styles.centerContainer}>
             <ActivityIndicator size="large" color="#073f7c" />
-            <Text style={styles.loadingText}>Locating neighbourhood stores in Ilkal...</Text>
+            <Text style={styles.loadingText}>Checking verified delivery radiuses near you...</Text>
           </View>
         ) : merchants.length === 0 ? (
-          <View style={styles.centerContainer}>
-            <Text style={styles.emptyTitle}>No stores found</Text>
-            <Text style={styles.emptySubtitle}>Try searching for a different keyword or category</Text>
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyIcon}>📍</Text>
+            <Text style={styles.emptyTitle}>No stores deliver to this location</Text>
+            <Text style={styles.emptySubtitle}>
+              Stores on OwnLocal only deliver within their verified service radius. None currently deliver to:{"\n"}
+              <Text style={{ fontWeight: '700', color: '#142b46' }}>{locationName}</Text>
+            </Text>
+
+            <TouchableOpacity
+              style={styles.pilotSwitchBtn}
+              onPress={() => {
+                setCoords({ lat: 15.9587, lng: 76.1264 });
+                setLocationName('Gandhi Chowk, Ilkal • 587125 (Pilot)');
+              }}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.pilotSwitchBtnText}>🛍️ Test With Ilkal Pilot Stores</Text>
+            </TouchableOpacity>
           </View>
         ) : (
           merchants.map((merchant) => (
@@ -366,15 +393,23 @@ export default function CustomerMarketplaceScreen() {
                   <Text style={styles.ratingText}>★ {merchant.rating || '4.8'}</Text>
                 </View>
                 <Text style={styles.storeDesc} numberOfLines={1}>
-                  {merchant.category} • {merchant.address || 'Ilkal Main Road'}
+                  {merchant.category} • {merchant.address || merchant.town || 'Local Town'}
                 </Text>
                 <View style={styles.tagRow}>
-                  <View style={styles.tagPill}>
-                    <Text style={styles.tagText}>
-                      {merchant.is_open ? 'Open • Delivery available' : 'Closed'}
+                  <View style={[styles.tagPill, merchant.can_self_deliver && styles.tagPillSelf]}>
+                    <Text style={[styles.tagText, merchant.can_self_deliver && styles.tagTextSelf]}>
+                      {!merchant.is_open
+                        ? 'Store Closed'
+                        : merchant.can_self_deliver
+                        ? '⚡ Store Delivery'
+                        : '🛵 Rider Delivery'}
                     </Text>
                   </View>
-                  <Text style={styles.distanceText}>• {merchant.distanceKm} km</Text>
+                  {merchant.distanceKm !== null && (
+                    <Text style={styles.distanceText}>
+                      • {merchant.distanceKm} km (Radius: {merchant.service_radius_km} km)
+                    </Text>
+                  )}
                 </View>
               </View>
 
@@ -749,15 +784,50 @@ const styles = StyleSheet.create({
     color: '#6f7f91',
     marginTop: 10,
   },
+  emptyContainer: {
+    paddingVertical: 36,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#dce6ef',
+    marginVertical: 12,
+  },
+  emptyIcon: {
+    fontSize: 36,
+    marginBottom: 8,
+  },
   emptyTitle: {
     fontSize: 16,
     fontWeight: '700',
     color: '#142b46',
+    textAlign: 'center',
   },
   emptySubtitle: {
     fontSize: 13,
     color: '#6f7f91',
-    marginTop: 4,
+    marginTop: 6,
+    textAlign: 'center',
+    lineHeight: 18,
+  },
+  pilotSwitchBtn: {
+    backgroundColor: '#073f7c',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+    marginTop: 16,
+  },
+  pilotSwitchBtnText: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  tagPillSelf: {
+    backgroundColor: '#fff0da',
+  },
+  tagTextSelf: {
+    color: '#c25e00',
   },
   floatingCartBar: {
     position: 'absolute',

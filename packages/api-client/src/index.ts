@@ -126,18 +126,43 @@ export class OwnlocalApiClient {
   }
 
   // Merchants
-  async getMerchants(params?: { category?: string; q?: string; lat?: number; lng?: number }): Promise<ApiResponse<MerchantProfile[]>> {
+  async getMerchants(params?: {
+    category?: string;
+    q?: string;
+    lat?: number;
+    lng?: number;
+    strict_radius?: boolean;
+  }): Promise<ApiResponse<MerchantProfile[]>> {
     const searchParams = new URLSearchParams();
     if (params?.category) searchParams.set('category', params.category);
     if (params?.q) searchParams.set('q', params.q);
-    if (params?.lat) searchParams.set('lat', params.lat.toString());
-    if (params?.lng) searchParams.set('lng', params.lng.toString());
+    if (params?.lat !== undefined) searchParams.set('lat', params.lat.toString());
+    if (params?.lng !== undefined) searchParams.set('lng', params.lng.toString());
+    if (params?.strict_radius !== undefined) searchParams.set('strict_radius', params.strict_radius.toString());
     const query = searchParams.toString() ? `?${searchParams.toString()}` : '';
     return this.request(`/api/merchants${query}`);
   }
 
-  async getMerchant(id: string): Promise<ApiResponse<MerchantProfile>> {
-    return this.request(`/api/merchants/${id}`);
+  async getMerchant(id: string, params?: { lat?: number; lng?: number }): Promise<ApiResponse<MerchantProfile>> {
+    const searchParams = new URLSearchParams();
+    if (params?.lat !== undefined) searchParams.set('lat', params.lat.toString());
+    if (params?.lng !== undefined) searchParams.set('lng', params.lng.toString());
+    const query = searchParams.toString() ? `?${searchParams.toString()}` : '';
+    return this.request(`/api/merchants/${id}${query}`);
+  }
+
+  async updateMerchantDeliverySettings(
+    merchantId: string,
+    settings: {
+      service_radius_km?: number;
+      own_delivery_enabled?: boolean;
+      own_delivery_radius_km?: number;
+    }
+  ): Promise<ApiResponse<MerchantProfile>> {
+    return this.request('/api/merchant/delivery-settings', {
+      method: 'POST',
+      body: JSON.stringify({ merchant_id: merchantId, ...settings }),
+    });
   }
 
   async createMerchant(merchantData: {

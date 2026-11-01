@@ -55,11 +55,16 @@ export interface MerchantProfile {
   town: string;
   service_radius_km: number;
   own_delivery_enabled: boolean;
+  own_delivery_radius_km?: number;
   status: MerchantStatus;
   rating?: number;
   image_url?: string | null;
   is_open?: boolean;
   phone?: string;
+  distanceKm?: number;
+  isDeliverable?: boolean;
+  can_self_deliver?: boolean;
+  can_rider_deliver?: boolean;
   created_at: string;
 }
 

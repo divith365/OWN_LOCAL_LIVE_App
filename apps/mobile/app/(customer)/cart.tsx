@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
   TextInput,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import * as Location from 'expo-location';
 import { Colors, Spacing, BorderRadius, Typography, getOrderStatusConfig } from '@ownlocal/ui';
 import { useCart } from '../../src/context/CartContext';
 import { apiClient } from '../../src/api';
@@ -41,6 +42,34 @@ export default function CartScreen() {
   const [orderNotes, setOrderNotes] = useState('');
   const [loading, setLoading] = useState(false);
   const [placedOrder, setPlacedOrder] = useState<any>(null);
+  const [merchantProfile, setMerchantProfile] = useState<any>(null);
+  const [customerCoords, setCustomerCoords] = useState<{ lat: number; lng: number } | null>(null);
+
+  // Fetch merchant profile with location distance
+  useEffect(() => {
+    if (!merchantId) return;
+
+    Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced })
+      .then((pos) => {
+        const coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        setCustomerCoords(coords);
+        return apiClient.getMerchant(merchantId, coords);
+      })
+      .catch(() => apiClient.getMerchant(merchantId))
+      .then((res) => {
+        if (res.success && res.data) {
+          setMerchantProfile(res.data);
+          // If merchant does not support self-delivery for this location, ensure deliveryType is not MERCHANT_SELF
+          if (!res.data.can_self_deliver && deliveryType === 'MERCHANT_SELF') {
+            setDeliveryType('PLATFORM_RIDER');
+          }
+          // If outside overall service radius, only STORE_PICKUP is deliverable
+          if (res.data.distanceKm !== null && res.data.distanceKm !== undefined && res.data.distanceKm > (res.data.service_radius_km || 5.0)) {
+            setDeliveryType('STORE_PICKUP');
+          }
+        }
+      });
+  }, [merchantId]);
 
   // Dynamic delivery fee calculation
   const deliveryFee = deliveryType === 'STORE_PICKUP' ? 0 : 25;
@@ -69,6 +98,8 @@ export default function CartScreen() {
         })),
         delivery_type: deliveryType,
         delivery_address: deliveryType === 'STORE_PICKUP' ? `Pickup at ${merchantName || 'Store'}` : address.trim(),
+        delivery_latitude: customerCoords?.lat,
+        delivery_longitude: customerCoords?.lng,
         payment_method: paymentMethod,
       };
 
@@ -219,30 +250,63 @@ export default function CartScreen() {
         <View style={styles.sectionCard}>
           <Text style={styles.sectionHeader}>Delivery Type</Text>
           <View style={styles.optionsCol}>
+            {/* 1. Platform Rider Assured */}
             <TouchableOpacity
-              style={[styles.radioOption, deliveryType === 'PLATFORM_RIDER' && styles.radioOptionActive]}
+              style={[
+                styles.radioOption,
+                deliveryType === 'PLATFORM_RIDER' && styles.radioOptionActive,
+                merchantProfile && !merchantProfile.can_rider_deliver && styles.radioOptionDisabled,
+              ]}
+              disabled={merchantProfile && !merchantProfile.can_rider_deliver}
               onPress={() => setDeliveryType('PLATFORM_RIDER')}
             >
               <Text style={styles.optionIcon}>🛵</Text>
               <View style={{ flex: 1 }}>
                 <Text style={styles.optionTitle}>Platform Rider Assured</Text>
-                <Text style={styles.optionSub}>Verified local Ilkal delivery rider</Text>
+                <Text style={styles.optionSub}>
+                  {merchantProfile && !merchantProfile.can_rider_deliver
+                    ? `Outside rider delivery radius (${merchantProfile.service_radius_km} km • distance: ${merchantProfile.distanceKm} km)`
+                    : `Verified delivery rider (up to ${merchantProfile?.service_radius_km || 5} km)`}
+                </Text>
               </View>
               <Text style={styles.optionPrice}>₹25</Text>
             </TouchableOpacity>
 
+            {/* 2. Direct Store Delivery (Merchant Self-Delivery) */}
             <TouchableOpacity
-              style={[styles.radioOption, deliveryType === 'MERCHANT_SELF' && styles.radioOptionActive]}
-              onPress={() => setDeliveryType('MERCHANT_SELF')}
+              style={[
+                styles.radioOption,
+                deliveryType === 'MERCHANT_SELF' && styles.radioOptionActive,
+                merchantProfile && !merchantProfile.can_self_deliver && styles.radioOptionDisabled,
+              ]}
+              disabled={merchantProfile && !merchantProfile.can_self_deliver}
+              onPress={() => {
+                if (merchantProfile && !merchantProfile.can_self_deliver) return;
+                setDeliveryType('MERCHANT_SELF');
+              }}
             >
               <Text style={styles.optionIcon}>⚡</Text>
               <View style={{ flex: 1 }}>
-                <Text style={styles.optionTitle}>Direct Store Delivery</Text>
-                <Text style={styles.optionSub}>Delivered directly by store staff</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Text style={styles.optionTitle}>Direct Store Delivery</Text>
+                  {merchantProfile?.can_self_deliver && (
+                    <View style={styles.selfDeliveryTag}>
+                      <Text style={styles.selfDeliveryTagText}>Store Staff</Text>
+                    </View>
+                  )}
+                </View>
+                <Text style={styles.optionSub}>
+                  {merchantProfile && !merchantProfile.can_self_deliver
+                    ? merchantProfile.own_delivery_enabled
+                      ? `Store self-delivery only within ${merchantProfile.own_delivery_radius_km || 3} km (you are ${merchantProfile.distanceKm || 'further'} km away)`
+                      : 'Store does not offer direct self-delivery'
+                    : `Delivered directly by store staff (within ${merchantProfile?.own_delivery_radius_km || 3} km)`}
+                </Text>
               </View>
               <Text style={styles.optionPrice}>₹25</Text>
             </TouchableOpacity>
 
+            {/* 3. Store Self-Pickup */}
             <TouchableOpacity
               style={[styles.radioOption, deliveryType === 'STORE_PICKUP' && styles.radioOptionActive]}
               onPress={() => setDeliveryType('STORE_PICKUP')}
@@ -250,7 +314,7 @@ export default function CartScreen() {
               <Text style={styles.optionIcon}>🏬</Text>
               <View style={{ flex: 1 }}>
                 <Text style={styles.optionTitle}>Store Self-Pickup</Text>
-                <Text style={styles.optionSub}>Skip delivery fees, pick up when ready</Text>
+                <Text style={styles.optionSub}>Skip delivery fees, pick up directly from store</Text>
               </View>
               <Text style={[styles.optionPrice, { color: Colors.success }]}>FREE</Text>
             </TouchableOpacity>
@@ -521,6 +585,22 @@ const styles = StyleSheet.create({
   radioOptionActive: {
     borderColor: Colors.primary,
     backgroundColor: Colors.primaryTint,
+  },
+  radioOptionDisabled: {
+    opacity: 0.55,
+    backgroundColor: '#f8fafc',
+    borderColor: '#e2e8f0',
+  },
+  selfDeliveryTag: {
+    backgroundColor: '#fff0da',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  selfDeliveryTagText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#a55a00',
   },
   optionIcon: {
     fontSize: 20,

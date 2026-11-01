@@ -27,12 +27,18 @@ export default function MerchantDashboardScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [togglingStockId, setTogglingStockId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'INCOMING' | 'PREPARING' | 'COMPLETED' | 'STOCK'>('INCOMING');
+  const [activeTab, setActiveTab] = useState<'INCOMING' | 'PREPARING' | 'COMPLETED' | 'STOCK' | 'DELIVERY'>('INCOMING');
   const [celebrationModal, setCelebrationModal] = useState<{
     visible: boolean;
     orderNumber: string;
     prepTime: number;
   } | null>(null);
+
+  // Delivery Configuration State
+  const [selfDeliveryEnabled, setSelfDeliveryEnabled] = useState(true);
+  const [selfDeliveryRadius, setSelfDeliveryRadius] = useState(3.0);
+  const [serviceRadius, setServiceRadius] = useState(6.0);
+  const [savingDeliverySettings, setSavingDeliverySettings] = useState(false);
 
   const prevPendingCountRef = useRef<number>(0);
   const pollTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -45,6 +51,9 @@ export default function MerchantDashboardScreen() {
         setMerchant(res.data.merchant);
         setOrders(res.data.orders || []);
         setIsOpen(Boolean(res.data.merchant?.is_open));
+        setSelfDeliveryEnabled(Boolean(res.data.merchant?.own_delivery_enabled));
+        setSelfDeliveryRadius(Number(res.data.merchant?.own_delivery_radius_km || 3.0));
+        setServiceRadius(Number(res.data.merchant?.service_radius_km || 6.0));
 
         // Check for new incoming orders
         const pendingCount = (res.data.orders || []).filter(
@@ -82,6 +91,32 @@ export default function MerchantDashboardScreen() {
       if (pollTimerRef.current) clearInterval(pollTimerRef.current);
     };
   }, [fetchDashboardData]);
+
+  const handleSaveDeliverySettings = async () => {
+    if (!merchant?.id) return;
+    setSavingDeliverySettings(true);
+    try {
+      const res = await apiClient.updateMerchantDeliverySettings(merchant.id, {
+        service_radius_km: serviceRadius,
+        own_delivery_enabled: selfDeliveryEnabled,
+        own_delivery_radius_km: selfDeliveryRadius,
+      });
+
+      if (res.success && res.data) {
+        setMerchant(res.data);
+        Alert.alert(
+          'Settings Saved! 🎉',
+          `Your delivery configuration is now live!\n• Self-Delivery: ${selfDeliveryEnabled ? `Enabled (${selfDeliveryRadius} km)` : 'Disabled'}\n• Rider Radius: ${serviceRadius} km`
+        );
+      } else {
+        Alert.alert('Save Failed', res.error?.message || 'Could not update delivery settings');
+      }
+    } catch (e: any) {
+      Alert.alert('Network Error', e?.message || 'Failed to communicate with marketplace server');
+    } finally {
+      setSavingDeliverySettings(false);
+    }
+  };
 
   const handleToggleOpen = async (val: boolean) => {
     setIsOpen(val);
@@ -292,6 +327,15 @@ export default function MerchantDashboardScreen() {
             📋 Stock ({products.length})
           </Text>
         </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.tabBtn, activeTab === 'DELIVERY' && styles.tabBtnActive]}
+          onPress={() => setActiveTab('DELIVERY')}
+        >
+          <Text style={[styles.tabText, activeTab === 'DELIVERY' && styles.tabTextActive]}>
+            ⚙️ Delivery
+          </Text>
+        </TouchableOpacity>
       </View>
 
       {/* Tab Content: Stock Management */}
@@ -334,6 +378,139 @@ export default function MerchantDashboardScreen() {
               );
             })}
           </View>
+        </View>
+      ) : activeTab === 'DELIVERY' ? (
+        /* Tab Content: Delivery Configuration */
+        <View style={styles.deliverySection}>
+          <Text style={styles.sectionHeading}>Delivery Radius & Fulfillment</Text>
+          <Text style={styles.sectionSub}>Configure your self-delivery range and platform rider limits</Text>
+
+          {/* 1. Self-Delivery by Store Staff */}
+          <View style={styles.configCard}>
+            <View style={styles.configCardHeader}>
+              <View style={{ flex: 1, paddingRight: 8 }}>
+                <Text style={styles.configTitle}>⚡ Store Staff Self-Delivery</Text>
+                <Text style={styles.configDesc}>
+                  Deliver orders directly using your own hotel/shop delivery staff.
+                </Text>
+              </View>
+              <Switch
+                value={selfDeliveryEnabled}
+                onValueChange={setSelfDeliveryEnabled}
+                trackColor={{ false: Colors.slate300, true: '#ffd499' }}
+                thumbColor={selfDeliveryEnabled ? Colors.secondary : Colors.slate400}
+              />
+            </View>
+
+            {selfDeliveryEnabled ? (
+              <View style={styles.radiusPickerBox}>
+                <Text style={styles.radiusPickerLabel}>
+                  Self-Delivery Radius: <Text style={{ fontWeight: '800', color: Colors.secondaryDark }}>{selfDeliveryRadius} km</Text>
+                </Text>
+                <Text style={styles.radiusPickerNote}>
+                  Nearby customers within {selfDeliveryRadius} km can choose Direct Store Delivery at checkout.
+                </Text>
+                <View style={styles.chipRow}>
+                  {[1, 2, 3, 5, 8].map((km) => (
+                    <TouchableOpacity
+                      key={km}
+                      style={[
+                        styles.chipBtn,
+                        selfDeliveryRadius === km && styles.chipBtnActiveSecondary,
+                      ]}
+                      onPress={() => setSelfDeliveryRadius(km)}
+                    >
+                      <Text
+                        style={[
+                          styles.chipText,
+                          selfDeliveryRadius === km && styles.chipTextActive,
+                        ]}
+                      >
+                        {km} km
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            ) : (
+              <View style={styles.disabledBanner}>
+                <Text style={styles.disabledBannerText}>
+                  Store self-delivery is turned off. Orders will be fulfilled exclusively by verified OwnLocal platform riders.
+                </Text>
+              </View>
+            )}
+          </View>
+
+          {/* 2. Platform Rider Delivery Radius */}
+          <View style={styles.configCard}>
+            <Text style={styles.configTitle}>🛵 Platform Rider Service Radius</Text>
+            <Text style={styles.configDesc}>
+              Maximum distance from your shop for OwnLocal riders to accept and deliver orders.
+            </Text>
+
+            <View style={styles.radiusPickerBox}>
+              <Text style={styles.radiusPickerLabel}>
+                Store Service Radius: <Text style={{ fontWeight: '800', color: Colors.primaryDark }}>{serviceRadius} km</Text>
+              </Text>
+              <View style={styles.chipRow}>
+                {[3, 5, 8, 10, 15, 20].map((km) => (
+                  <TouchableOpacity
+                    key={km}
+                    style={[
+                      styles.chipBtn,
+                      serviceRadius === km && styles.chipBtnActivePrimary,
+                    ]}
+                    onPress={() => setServiceRadius(km)}
+                  >
+                    <Text
+                      style={[
+                        styles.chipText,
+                        serviceRadius === km && styles.chipTextActive,
+                      ]}
+                    >
+                      {km} km
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          </View>
+
+          {/* 3. Customer Fulfillment Summary Rule */}
+          <View style={styles.summaryRuleCard}>
+            <Text style={styles.summaryRuleTitle}>📋 How Customers See Your Shop:</Text>
+            {selfDeliveryEnabled ? (
+              <>
+                <Text style={styles.ruleLine}>
+                  • <Text style={{ fontWeight: '700' }}>0 to {selfDeliveryRadius} km:</Text> Customer sees <Text style={{ color: Colors.secondaryDark, fontWeight: '700' }}>Direct Store Delivery (⚡)</Text> + Platform Rider (🛵)
+                </Text>
+                <Text style={styles.ruleLine}>
+                  • <Text style={{ fontWeight: '700' }}>{selfDeliveryRadius} to {serviceRadius} km:</Text> Customer sees <Text style={{ color: Colors.primaryDark, fontWeight: '700' }}>Platform Rider Delivery Only (🛵)</Text>
+                </Text>
+              </>
+            ) : (
+              <Text style={styles.ruleLine}>
+                • <Text style={{ fontWeight: '700' }}>0 to {serviceRadius} km:</Text> Customer sees <Text style={{ color: Colors.primaryDark, fontWeight: '700' }}>Platform Rider Delivery Only (🛵)</Text>
+              </Text>
+            )}
+            <Text style={styles.ruleLine}>
+              • <Text style={{ fontWeight: '700' }}>Beyond {serviceRadius} km:</Text> Customer sees <Text style={{ fontWeight: '700' }}>Store Pickup Only (🏬)</Text>
+            </Text>
+          </View>
+
+          {/* Save Button */}
+          <TouchableOpacity
+            style={styles.saveSettingsBtn}
+            disabled={savingDeliverySettings}
+            onPress={handleSaveDeliverySettings}
+            activeOpacity={0.85}
+          >
+            {savingDeliverySettings ? (
+              <ActivityIndicator color={Colors.white} size="small" />
+            ) : (
+              <Text style={styles.saveSettingsBtnText}>Save Delivery Configuration 💾</Text>
+            )}
+          </TouchableOpacity>
         </View>
       ) : (
         /* Tab Content: Orders */
@@ -948,5 +1125,138 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '800',
     color: '#ffffff',
+  },
+
+  /* Delivery Configuration Section */
+  deliverySection: {
+    gap: Spacing.md,
+    paddingBottom: Spacing.xxl,
+  },
+  configCard: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    shadowColor: '#000',
+    shadowOpacity: 0.03,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 1,
+  },
+  configCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  configTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: Colors.slate900,
+  },
+  configDesc: {
+    fontSize: 12,
+    color: Colors.textMuted,
+    marginTop: 2,
+    lineHeight: 16,
+  },
+  radiusPickerBox: {
+    marginTop: 12,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: Colors.slate100,
+  },
+  radiusPickerLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: Colors.slate800,
+    marginBottom: 4,
+  },
+  radiusPickerNote: {
+    fontSize: 11,
+    color: Colors.textMuted,
+    marginBottom: 8,
+  },
+  chipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 4,
+  },
+  chipBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: BorderRadius.full,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.slate50,
+  },
+  chipBtnActivePrimary: {
+    borderColor: Colors.primary,
+    backgroundColor: Colors.primary,
+  },
+  chipBtnActiveSecondary: {
+    borderColor: Colors.secondary,
+    backgroundColor: Colors.secondary,
+  },
+  chipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.slate700,
+  },
+  chipTextActive: {
+    color: Colors.white,
+    fontWeight: '700',
+  },
+  disabledBanner: {
+    backgroundColor: '#f8fafc',
+    borderRadius: BorderRadius.md,
+    padding: 10,
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  disabledBannerText: {
+    fontSize: 11,
+    color: Colors.slate600,
+    lineHeight: 16,
+  },
+  summaryRuleCard: {
+    backgroundColor: '#eef5fc',
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.md,
+    borderWidth: 1,
+    borderColor: '#c8d6e5',
+  },
+  summaryRuleTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.primaryDark,
+    marginBottom: 6,
+  },
+  ruleLine: {
+    fontSize: 12,
+    color: Colors.slate700,
+    lineHeight: 18,
+    marginTop: 3,
+  },
+  saveSettingsBtn: {
+    backgroundColor: Colors.primary,
+    borderRadius: BorderRadius.md,
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 6,
+    shadowColor: Colors.primary,
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 3,
+  },
+  saveSettingsBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.white,
   },
 });

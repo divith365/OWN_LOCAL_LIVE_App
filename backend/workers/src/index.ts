@@ -54,15 +54,17 @@ app.get('/api/health', (c) => {
 // Mount Authentication Router (/api/auth/send-otp, /api/auth/verify-otp, /api/auth/google-phone, etc.)
 app.route('/api/auth', authRouter);
 
-// 2. Merchants: Public Discovery & Nearby Filtering
+// 2. Merchants: Public Discovery & Delivery Radius Filtering
 app.get('/api/merchants', async (c) => {
   const category = c.req.query('category');
   const queryParam = c.req.query('q')?.trim();
   const latStr = c.req.query('lat');
   const lngStr = c.req.query('lng');
+  const strictRadius = c.req.query('strict_radius') !== 'false'; // default true
 
-  const customerLat = latStr ? parseFloat(latStr) : Number(c.env.PILOT_LATITUDE || 15.9587);
-  const customerLng = lngStr ? parseFloat(lngStr) : Number(c.env.PILOT_LONGITUDE || 76.1264);
+  const hasGps = Boolean(latStr && lngStr && !isNaN(parseFloat(latStr)) && !isNaN(parseFloat(lngStr)));
+  const customerLat = hasGps ? parseFloat(latStr!) : null;
+  const customerLng = hasGps ? parseFloat(lngStr!) : null;
 
   let query = 'SELECT * FROM merchant_profiles WHERE status = "approved"';
   const bindings: any[] = [];
@@ -79,34 +81,64 @@ app.get('/api/merchants', async (c) => {
 
   const { results } = await c.env.DB.prepare(query).bind(...bindings).all();
 
-  // Apply Haversine Distance algorithm (Section 13)
-  const merchantsWithDistance = (results || []).map((m: any) => {
-    const distanceKm = calculateDistanceKm(
-      customerLat,
-      customerLng,
-      m.latitude,
-      m.longitude
-    );
-    return {
-      ...m,
-      distanceKm,
-      isDeliverable: distanceKm <= (m.service_radius_km || 5.0),
-    };
-  });
+  // If customer provided GPS, calculate distance & filter strictly by delivery radius
+  let processedMerchants: any[] = [];
+  if (hasGps && customerLat !== null && customerLng !== null) {
+    processedMerchants = (results || []).map((m: any) => {
+      const distanceKm = calculateDistanceKm(
+        customerLat,
+        customerLng,
+        m.latitude,
+        m.longitude
+      );
+      const serviceRadius = Number(m.service_radius_km || 5.0);
+      const selfRadius = Number(m.own_delivery_radius_km || 3.0);
+      const isDeliverable = distanceKm <= serviceRadius;
+      const canSelfDeliver = Boolean(m.own_delivery_enabled) && distanceKm <= selfRadius;
+      const canRiderDeliver = isDeliverable;
 
-  merchantsWithDistance.sort((a: any, b: any) => a.distanceKm - b.distanceKm);
+      return {
+        ...m,
+        distanceKm: Number(distanceKm.toFixed(1)),
+        service_radius_km: serviceRadius,
+        own_delivery_radius_km: selfRadius,
+        isDeliverable,
+        can_self_deliver: canSelfDeliver,
+        can_rider_deliver: canRiderDeliver,
+      };
+    });
+
+    // If strictRadius is enabled, ONLY return merchants that deliver to customer's location
+    if (strictRadius) {
+      processedMerchants = processedMerchants.filter((m: any) => m.isDeliverable);
+    }
+
+    processedMerchants.sort((a: any, b: any) => a.distanceKm - b.distanceKm);
+  } else {
+    // No GPS provided, return all approved merchants with default delivery capabilities
+    processedMerchants = (results || []).map((m: any) => ({
+      ...m,
+      distanceKm: null,
+      service_radius_km: Number(m.service_radius_km || 5.0),
+      own_delivery_radius_km: Number(m.own_delivery_radius_km || 3.0),
+      isDeliverable: true,
+      can_self_deliver: Boolean(m.own_delivery_enabled),
+      can_rider_deliver: true,
+    }));
+  }
 
   return c.json({
     success: true,
-    data: merchantsWithDistance,
+    data: processedMerchants,
     meta: {
-      total: merchantsWithDistance.length,
-      customer_coordinates: { latitude: customerLat, longitude: customerLng },
+      total: processedMerchants.length,
+      customer_coordinates: hasGps ? { latitude: customerLat, longitude: customerLng } : null,
+      strict_radius_applied: strictRadius && hasGps,
     },
   });
 });
 
-// Search Products Across Stores in Ilkal
+// Search Products Across Stores
 app.get('/api/products/search', async (c) => {
   const q = c.req.query('q')?.trim();
   if (!q) {
@@ -115,41 +147,66 @@ app.get('/api/products/search', async (c) => {
 
   const latStr = c.req.query('lat');
   const lngStr = c.req.query('lng');
-  const customerLat = latStr ? parseFloat(latStr) : Number(c.env.PILOT_LATITUDE || 15.9587);
-  const customerLng = lngStr ? parseFloat(lngStr) : Number(c.env.PILOT_LONGITUDE || 76.1264);
+  const hasGps = Boolean(latStr && lngStr && !isNaN(parseFloat(latStr)) && !isNaN(parseFloat(lngStr)));
+  const customerLat = hasGps ? parseFloat(latStr!) : null;
+  const customerLng = hasGps ? parseFloat(lngStr!) : null;
 
   const { results } = await c.env.DB.prepare(`
-    SELECT p.*, m.business_name, m.latitude as merchant_lat, m.longitude as merchant_lng, m.service_radius_km
+    SELECT p.*, m.business_name, m.latitude as merchant_lat, m.longitude as merchant_lng,
+           m.service_radius_km, m.own_delivery_enabled, m.own_delivery_radius_km
     FROM products p
     JOIN merchant_profiles m ON p.merchant_id = m.id
-    WHERE p.active = 1 AND (p.name LIKE ? OR p.description LIKE ?)
+    WHERE p.active = 1 AND m.status = 'approved' AND (p.name LIKE ? OR p.description LIKE ?)
     LIMIT 30
   `)
     .bind(`%${q}%`, `%${q}%`)
     .all();
 
-  const formatted = (results || []).map((row: any) => {
-    const distanceKm = calculateDistanceKm(
-      customerLat,
-      customerLng,
-      row.merchant_lat,
-      row.merchant_lng
-    );
+  let formatted = (results || []).map((row: any) => {
+    let distanceKm = null;
+    let isDeliverable = true;
+    let canSelfDeliver = Boolean(row.own_delivery_enabled);
+    let canRiderDeliver = true;
+
+    if (hasGps && customerLat !== null && customerLng !== null) {
+      distanceKm = calculateDistanceKm(
+        customerLat,
+        customerLng,
+        row.merchant_lat,
+        row.merchant_lng
+      );
+      const serviceRadius = Number(row.service_radius_km || 5.0);
+      const selfRadius = Number(row.own_delivery_radius_km || 3.0);
+      isDeliverable = distanceKm <= serviceRadius;
+      canSelfDeliver = Boolean(row.own_delivery_enabled) && distanceKm <= selfRadius;
+      canRiderDeliver = isDeliverable;
+      distanceKm = Number(distanceKm.toFixed(1));
+    }
+
     return {
       ...row,
       distanceKm,
-      isDeliverable: distanceKm <= (row.service_radius_km || 5.0),
+      isDeliverable,
+      can_self_deliver: canSelfDeliver,
+      can_rider_deliver: canRiderDeliver,
     };
   });
 
-  formatted.sort((a: any, b: any) => a.distanceKm - b.distanceKm);
+  if (hasGps) {
+    formatted = formatted.filter((p: any) => p.isDeliverable);
+    formatted.sort((a: any, b: any) => (a.distanceKm || 0) - (b.distanceKm || 0));
+  }
+
   return c.json({ success: true, data: formatted });
 });
 
 // 3. Merchant Details
 app.get('/api/merchants/:id', async (c) => {
   const id = c.req.param('id');
-  const merchant = await c.env.DB.prepare('SELECT * FROM merchant_profiles WHERE id = ?')
+  const latStr = c.req.query('lat');
+  const lngStr = c.req.query('lng');
+
+  const merchant: any = await c.env.DB.prepare('SELECT * FROM merchant_profiles WHERE id = ?')
     .bind(id)
     .first();
 
@@ -157,7 +214,37 @@ app.get('/api/merchants/:id', async (c) => {
     return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Merchant not found' } }, 404);
   }
 
-  return c.json({ success: true, data: merchant });
+  let distanceKm = null;
+  let isDeliverable = true;
+  let canSelfDeliver = Boolean(merchant.own_delivery_enabled);
+  let canRiderDeliver = true;
+
+  if (latStr && lngStr) {
+    const customerLat = parseFloat(latStr);
+    const customerLng = parseFloat(lngStr);
+    if (!isNaN(customerLat) && !isNaN(customerLng)) {
+      distanceKm = calculateDistanceKm(customerLat, customerLng, merchant.latitude, merchant.longitude);
+      const serviceRadius = Number(merchant.service_radius_km || 5.0);
+      const selfRadius = Number(merchant.own_delivery_radius_km || 3.0);
+      isDeliverable = distanceKm <= serviceRadius;
+      canSelfDeliver = Boolean(merchant.own_delivery_enabled) && distanceKm <= selfRadius;
+      canRiderDeliver = isDeliverable;
+      distanceKm = Number(distanceKm.toFixed(1));
+    }
+  }
+
+  return c.json({
+    success: true,
+    data: {
+      ...merchant,
+      distanceKm,
+      isDeliverable,
+      can_self_deliver: canSelfDeliver,
+      can_rider_deliver: canRiderDeliver,
+      own_delivery_radius_km: Number(merchant.own_delivery_radius_km || 3.0),
+      service_radius_km: Number(merchant.service_radius_km || 5.0),
+    },
+  });
 });
 
 // Helper for starter catalog items
@@ -308,6 +395,58 @@ app.post('/api/orders', async (c) => {
 
   if (!body.merchant_id || !body.items || body.items.length === 0) {
     return c.json({ success: false, error: { code: 'BAD_REQUEST', message: 'Invalid order payload' } }, 400);
+  }
+
+  const merchant: any = await c.env.DB.prepare('SELECT * FROM merchant_profiles WHERE id = ?')
+    .bind(body.merchant_id)
+    .first();
+
+  if (!merchant) {
+    return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Merchant store not found' } }, 404);
+  }
+
+  // Radius & Delivery Capability Verification
+  if (body.delivery_latitude && body.delivery_longitude) {
+    const distanceKm = calculateDistanceKm(
+      body.delivery_latitude,
+      body.delivery_longitude,
+      merchant.latitude,
+      merchant.longitude
+    );
+
+    const serviceRadius = Number(merchant.service_radius_km || 5.0);
+    const ownRadius = Number(merchant.own_delivery_radius_km || 3.0);
+
+    if (body.delivery_type !== 'STORE_PICKUP' && distanceKm > serviceRadius) {
+      return c.json({
+        success: false,
+        error: {
+          code: 'OUT_OF_DELIVERY_RADIUS',
+          message: `Your address is outside ${merchant.business_name}'s delivery radius of ${serviceRadius} km (current distance: ${distanceKm.toFixed(1)} km). You may choose Store Self-Pickup.`,
+        },
+      }, 400);
+    }
+
+    if (body.delivery_type === 'MERCHANT_SELF') {
+      if (!merchant.own_delivery_enabled) {
+        return c.json({
+          success: false,
+          error: {
+            code: 'SELF_DELIVERY_DISABLED',
+            message: `${merchant.business_name} does not offer self-delivery. Please select Platform Rider Delivery.`,
+          },
+        }, 400);
+      }
+      if (distanceKm > ownRadius) {
+        return c.json({
+          success: false,
+          error: {
+            code: 'SELF_DELIVERY_RADIUS_EXCEEDED',
+            message: `Direct store delivery is only available within ${ownRadius} km (you are ${distanceKm.toFixed(1)} km away). Please select Platform Rider Delivery.`,
+          },
+        }, 400);
+      }
+    }
   }
 
   const productIds = body.items.map((i) => `'${i.product_id}'`).join(',');
@@ -647,10 +786,17 @@ app.get('/api/merchant/dashboard', async (c) => {
     .filter((o: any) => o.status !== 'CUSTOMER_CANCELLED' && o.status !== 'MERCHANT_REJECTED')
     .reduce((sum: number, o: any) => sum + (o.grand_total || 0), 0);
 
+  if (!merchant) {
+    return c.json({
+      success: false,
+      error: { code: 'NOT_FOUND', message: `Merchant store "${merchantId}" not found` },
+    }, 404);
+  }
+
   return c.json({
     success: true,
     data: {
-      merchant: merchant || { business_name: 'Ayodhya Hotel', id: merchantId, is_open: 1 },
+      merchant,
       orders: ordersWithItems,
       metrics: {
         today_orders: todayOrders,
@@ -686,6 +832,64 @@ app.post('/api/merchant/toggle-open', async (c) => {
     .run();
 
   return c.json({ success: true, data: { merchant_id: merchantId, is_open: body.is_open } });
+});
+
+// Merchant: Configure Delivery Radius & Self-Delivery Settings
+app.post('/api/merchant/delivery-settings', async (c) => {
+  const body = await c.req.json<{
+    merchant_id?: string;
+    service_radius_km?: number;
+    own_delivery_enabled?: boolean;
+    own_delivery_radius_km?: number;
+  }>();
+
+  let merchantId = body.merchant_id || 'merch_ayodhya';
+
+  const authHeader = c.req.header('Authorization');
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.substring(7);
+    const jwtSecret = c.env.JWT_SECRET || 'ownlocal_live_super_secret_jwt_key_2026_ilkal_pilot';
+    const decoded = await verifyJwt<{ userId: string }>(token, jwtSecret);
+    if (decoded.valid && decoded.payload?.userId) {
+      const merchantByUser: any = await c.env.DB.prepare('SELECT id FROM merchant_profiles WHERE user_id = ?')
+        .bind(decoded.payload.userId)
+        .first();
+      if (merchantByUser) {
+        merchantId = merchantByUser.id;
+      }
+    }
+  }
+
+  const existing: any = await c.env.DB.prepare('SELECT * FROM merchant_profiles WHERE id = ?')
+    .bind(merchantId)
+    .first();
+
+  if (!existing) {
+    return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Merchant not found' } }, 404);
+  }
+
+  const serviceRadius = body.service_radius_km !== undefined 
+    ? Math.max(0.5, Math.min(50, Number(body.service_radius_km))) 
+    : Number(existing.service_radius_km || 5.0);
+
+  const ownDeliveryEnabled = body.own_delivery_enabled !== undefined 
+    ? (body.own_delivery_enabled ? 1 : 0) 
+    : existing.own_delivery_enabled;
+
+  const ownRadius = body.own_delivery_radius_km !== undefined 
+    ? Math.max(0.5, Math.min(30, Number(body.own_delivery_radius_km))) 
+    : Number(existing.own_delivery_radius_km || 3.0);
+
+  await c.env.DB.prepare(`
+    UPDATE merchant_profiles
+    SET service_radius_km = ?, own_delivery_enabled = ?, own_delivery_radius_km = ?
+    WHERE id = ?
+  `)
+    .bind(serviceRadius, ownDeliveryEnabled, ownRadius, merchantId)
+    .run();
+
+  const updated = await c.env.DB.prepare('SELECT * FROM merchant_profiles WHERE id = ?').bind(merchantId).first();
+  return c.json({ success: true, data: updated, message: 'Delivery settings updated successfully' });
 });
 
 // Merchant: Toggle Product In-Stock / Out-of-Stock
