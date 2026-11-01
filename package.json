@@ -19,6 +19,7 @@
     "d1:migrate:remote": "npm --workspace=backend/workers run d1:migrate:remote",
     "d1:seed:local": "npm --workspace=backend/workers run d1:seed:local",
     "d1:seed:remote": "npm --workspace=backend/workers run d1:seed:remote",
+    "typecheck": "npx tsc --noEmit -p apps/mobile/tsconfig.json && npx tsc --noEmit -p backend/workers/tsconfig.json",
     "build": "npm --workspace=packages/* run build --if-present"
   },
   "devDependencies": {
