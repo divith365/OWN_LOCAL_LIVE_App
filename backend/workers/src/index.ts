@@ -160,6 +160,127 @@ app.get('/api/merchants/:id', async (c) => {
   return c.json({ success: true, data: merchant });
 });
 
+// Helper for starter catalog items
+function getStarterProductsForCategory(category: string): Array<{ name: string; description: string; price: number; is_veg: boolean }> {
+  switch (category) {
+    case 'Food & Dining':
+      return [
+        { name: 'Special North Karnataka Meals', description: 'Fresh Jowar Roti, Ennegai, Shenga Chutney, Dal & Rice', price: 90, is_veg: true },
+        { name: 'Butter Masala Dosa', description: 'Crisp golden crepe folded over aromatic potato palya', price: 60, is_veg: true },
+        { name: 'Filter Coffee', description: 'Freshly brewed South Indian filter kaapi with hot milk', price: 20, is_veg: true },
+      ];
+    case 'Kirana & Daily Needs':
+      return [
+        { name: 'Sona Masoori Rice (5kg Bag)', description: 'Premium polished daily cooking rice', price: 320, is_veg: true },
+        { name: 'Premium Desi Toor Dal (1kg)', description: 'Unpolished protein-rich dal', price: 165, is_veg: true },
+        { name: 'Refined Sunflower Oil (1L)', description: 'Pure cooking oil pouch', price: 140, is_veg: true },
+      ];
+    case 'Fresh Fruits & Veggies':
+      return [
+        { name: 'Farm Fresh Potatoes (1kg)', description: 'Handpicked local farm potatoes', price: 35, is_veg: true },
+        { name: 'Red Onions (1kg)', description: 'Fresh farm-sourced red onions', price: 45, is_veg: true },
+        { name: 'Fresh Bananas (1 Dozen)', description: 'Naturally ripened sweet bananas', price: 50, is_veg: true },
+      ];
+    case 'Ilkal Sarees & Handloom':
+      return [
+        { name: 'Authentic Ilkal Silk Saree (Topetenchi)', description: 'Signature red and maroon handwoven pallu saree', price: 3499, is_veg: true },
+        { name: 'Cotton-Silk Ilkal Daily Saree', description: 'Lightweight comfortable saree with temple border', price: 1299, is_veg: true },
+      ];
+    case 'Pharmacy & Healthcare':
+      return [
+        { name: 'First Aid Antiseptic & Bandages', description: 'Essential home medical care kit', price: 110, is_veg: true },
+        { name: 'Paracetamol Tablets (Strip of 10)', description: 'Quick fever and ache relief tablets', price: 30, is_veg: true },
+      ];
+    default:
+      return [
+        { name: 'Standard Store Item', description: 'Standard starter catalog item', price: 100, is_veg: true },
+      ];
+  }
+}
+
+// 3. Create / Onboard New Merchant (Admin or Self-Registration with GPS)
+app.post('/api/merchants', async (c) => {
+  const body = await c.req.json<{
+    business_name: string;
+    category: string;
+    phone: string;
+    latitude: number;
+    longitude: number;
+    address: string;
+    town?: string;
+    service_radius_km?: number;
+    own_delivery_enabled?: boolean;
+    status?: 'approved' | 'pending';
+  }>();
+
+  if (!body.business_name?.trim() || !body.phone?.trim() || !body.address?.trim() || !body.latitude || !body.longitude) {
+    return c.json({
+      success: false,
+      error: { code: 'INVALID_INPUT', message: 'Shop name, phone, address, and GPS coordinates are required' },
+    }, 400);
+  }
+
+  const userId = `usr_merch_${Date.now()}`;
+  const merchantId = `merch_${Date.now()}`;
+  const status = body.status || 'approved'; // default approved for pilot or admin
+
+  // 1. Ensure user exists
+  await c.env.DB.prepare(`
+    INSERT OR IGNORE INTO users (id, phone, email, role, status)
+    VALUES (?, ?, ?, 'merchant', 'active')
+  `)
+    .bind(userId, body.phone.trim(), `${merchantId}@ownlocal.live`)
+    .run();
+
+  // 2. Insert merchant profile
+  await c.env.DB.prepare(`
+    INSERT INTO merchant_profiles (
+      id, user_id, business_name, category, phone,
+      latitude, longitude, address, town,
+      service_radius_km, own_delivery_enabled, rating, is_open, status
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 4.8, 1, ?)
+  `)
+    .bind(
+      merchantId,
+      userId,
+      body.business_name.trim(),
+      body.category || 'Food & Dining',
+      body.phone.trim(),
+      body.latitude,
+      body.longitude,
+      body.address.trim(),
+      body.town || 'Ilkal',
+      body.service_radius_km || 5.0,
+      body.own_delivery_enabled !== false ? 1 : 0,
+      status
+    )
+    .run();
+
+  // 3. Insert initial starter products for this store
+  const starterItems = getStarterProductsForCategory(body.category || 'Food & Dining');
+  for (const item of starterItems) {
+    const prodId = `prod_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    await c.env.DB.prepare(`
+      INSERT INTO products (id, merchant_id, name, description, price, is_veg, in_stock, active)
+      VALUES (?, ?, ?, ?, ?, ?, 1, 1)
+    `)
+      .bind(prodId, merchantId, item.name, item.description, item.price, item.is_veg ? 1 : 0)
+      .run();
+  }
+
+  const createdMerchant = await c.env.DB.prepare('SELECT * FROM merchant_profiles WHERE id = ?')
+    .bind(merchantId)
+    .first();
+
+  return c.json({
+    success: true,
+    data: createdMerchant,
+    message: status === 'approved' 
+      ? `Store "${body.business_name.trim()}" onboarded and live in Ilkal marketplace!` 
+      : `Store "${body.business_name.trim()}" registration submitted for admin approval.`,
+  });
+});
+
 // 4. Products for Merchant
 app.get('/api/merchants/:id/products', async (c) => {
   const merchantId = c.req.param('id');

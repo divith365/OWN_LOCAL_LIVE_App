@@ -9,12 +9,22 @@ import {
   ActivityIndicator,
   Alert,
   ScrollView,
+  Modal,
 } from 'react-native';
+import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { UserRole } from '@ownlocal/types';
 import { useAuth } from '../src/context/AuthContext';
 import { apiClient } from '../src/api';
+
+const STORE_CATEGORIES = [
+  'Food & Dining',
+  'Kirana & Daily Needs',
+  'Fresh Fruits & Veggies',
+  'Ilkal Sarees & Handloom',
+  'Pharmacy & Healthcare',
+];
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -25,6 +35,90 @@ export default function LoginScreen() {
   const [otpSent, setOtpSent] = useState(false);
   const [otp, setOtp] = useState('123456');
   const [loading, setLoading] = useState(false);
+
+  // Merchant Self-Registration Modal state
+  const [showRegisterModal, setShowRegisterModal] = useState(false);
+  const [shopName, setShopName] = useState('');
+  const [shopCategory, setShopCategory] = useState('Food & Dining');
+  const [shopPhone, setShopPhone] = useState('');
+  const [shopAddress, setShopAddress] = useState('');
+  const [shopRadiusKm, setShopRadiusKm] = useState(6);
+  const [shopCoords, setShopCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [detectingShopGps, setDetectingShopGps] = useState(false);
+  const [registeringShop, setRegisteringShop] = useState(false);
+
+  const handleDetectShopLocation = async () => {
+    setDetectingShopGps(true);
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Denied', 'Using central Ilkal coordinates.');
+        setShopCoords({ lat: 15.9587, lng: 76.1264 });
+        setShopAddress('Main Bazaar Road, Near Old Bus Stand, Ilkal - 587125');
+        return;
+      }
+      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      setShopCoords({ lat: loc.coords.latitude, lng: loc.coords.longitude });
+      const [rev] = await Location.reverseGeocodeAsync({
+        latitude: loc.coords.latitude,
+        longitude: loc.coords.longitude,
+      });
+      if (rev) {
+        const parts = [rev.name, rev.street, rev.subregion || rev.city || 'Ilkal', rev.postalCode || '587125'].filter(Boolean);
+        setShopAddress(parts.join(', '));
+      } else {
+        setShopAddress('Main Road, Ilkal - 587125');
+      }
+    } catch {
+      setShopCoords({ lat: 15.9587, lng: 76.1264 });
+      setShopAddress('Main Road, Near Old Bus Stand, Ilkal - 587125');
+    } finally {
+      setDetectingShopGps(false);
+    }
+  };
+
+  const handleRegisterStore = async () => {
+    if (!shopName.trim()) {
+      Alert.alert('Required', 'Please enter shop/business name.');
+      return;
+    }
+    if (!shopPhone.trim() || shopPhone.trim().length !== 10) {
+      Alert.alert('Invalid Phone', 'Please enter a valid 10-digit mobile number.');
+      return;
+    }
+    if (!shopAddress.trim()) {
+      Alert.alert('Required', 'Please enter shop address or auto-detect with GPS.');
+      return;
+    }
+    const coords = shopCoords || { lat: 15.9587, lng: 76.1264 };
+    setRegisteringShop(true);
+    try {
+      const res = await apiClient.createMerchant({
+        business_name: shopName.trim(),
+        category: shopCategory,
+        phone: shopPhone.trim(),
+        latitude: coords.lat,
+        longitude: coords.lng,
+        address: shopAddress.trim(),
+        town: 'Ilkal',
+        service_radius_km: shopRadiusKm,
+        status: 'approved',
+      });
+      if (res.success) {
+        Alert.alert('Store Registered! 🎉', `Welcome ${shopName}! Your store is now active in Ilkal.`);
+        setShowRegisterModal(false);
+        // Auto login as merchant
+        await loginWithOtp(shopPhone.trim(), '123456', 'merchant');
+        router.replace('/(merchant)');
+      } else {
+        Alert.alert('Registration Error', res.error?.message || 'Could not register store.');
+      }
+    } catch (e: any) {
+      Alert.alert('Network Error', e?.message || 'Could not connect to server.');
+    } finally {
+      setRegisteringShop(false);
+    }
+  };
 
   const demoRoles: Array<{
     id: UserRole;
@@ -253,7 +347,180 @@ export default function LoginScreen() {
             <Text style={styles.googleIcon}>G</Text>
             <Text style={styles.googleBtnText}>Verify Phone with Google Identity</Text>
           </TouchableOpacity>
+
+          {/* Merchant Self-Registration Banner */}
+          <View style={styles.registerStoreBox}>
+            <Text style={styles.registerStoreIcon}>🏪</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.registerStoreTitle}>Own a local shop in Ilkal?</Text>
+              <Text style={styles.registerStoreSub}>Register your store and start selling online in minutes.</Text>
+            </View>
+            <TouchableOpacity
+              style={styles.registerStoreBtn}
+              onPress={() => {
+                setShowRegisterModal(true);
+                if (!shopCoords) handleDetectShopLocation();
+              }}
+            >
+              <Text style={styles.registerStoreBtnText}>Register Store</Text>
+            </TouchableOpacity>
+          </View>
         </View>
+
+        {/* Modal: Register Store with GPS Auto-Pick */}
+        <Modal
+          visible={showRegisterModal}
+          transparent={true}
+          animationType="slide"
+          onRequestClose={() => setShowRegisterModal(false)}
+        >
+          <View style={styles.modalBackdrop}>
+            <View style={styles.addModalCard}>
+              <View style={styles.modalHeaderRow}>
+                <View>
+                  <Text style={styles.modalTitle}>Register Store in Ilkal</Text>
+                  <Text style={styles.modalSub}>Start selling to local customers</Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => setShowRegisterModal(false)}
+                  style={styles.modalCloseBtn}
+                >
+                  <Text style={styles.modalCloseText}>✕</Text>
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView style={{ maxHeight: 440 }} showsVerticalScrollIndicator={false}>
+                {/* Business Name */}
+                <View style={styles.formGroup}>
+                  <Text style={styles.formLabel}>Store / Shop Name *</Text>
+                  <TextInput
+                    style={styles.formInput}
+                    placeholder="e.g. Mahant Sweets & Bakery"
+                    placeholderTextColor="#94a3b8"
+                    value={shopName}
+                    onChangeText={setShopName}
+                  />
+                </View>
+
+                {/* Category */}
+                <View style={styles.formGroup}>
+                  <Text style={styles.formLabel}>Store Category *</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryScroll}>
+                    {STORE_CATEGORIES.map((cat) => (
+                      <TouchableOpacity
+                        key={cat}
+                        style={[styles.categoryChip, shopCategory === cat && styles.categoryChipActive]}
+                        onPress={() => setShopCategory(cat)}
+                      >
+                        <Text style={[styles.categoryChipText, shopCategory === cat && styles.categoryChipTextActive]}>
+                          {cat}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+
+                {/* Phone */}
+                <View style={styles.formGroup}>
+                  <Text style={styles.formLabel}>Owner Mobile Number (10 digits) *</Text>
+                  <View style={styles.phoneInputRow}>
+                    <Text style={styles.phonePrefix}>+91</Text>
+                    <TextInput
+                      style={styles.phoneInputBox}
+                      placeholder="9876543210"
+                      placeholderTextColor="#94a3b8"
+                      keyboardType="phone-pad"
+                      maxLength={10}
+                      value={shopPhone}
+                      onChangeText={setShopPhone}
+                    />
+                  </View>
+                </View>
+
+                {/* GPS Auto-Pick Section */}
+                <View style={styles.formGroup}>
+                  <View style={styles.gpsHeaderRow}>
+                    <Text style={styles.formLabel}>Store GPS Location *</Text>
+                    <TouchableOpacity
+                      style={styles.detectGpsBtn}
+                      disabled={detectingShopGps}
+                      onPress={handleDetectShopLocation}
+                    >
+                      {detectingShopGps ? (
+                        <ActivityIndicator size="small" color="#0369a1" />
+                      ) : (
+                        <Text style={styles.detectGpsText}>📍 Auto-Pick GPS</Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+
+                  {shopCoords ? (
+                    <View style={styles.gpsCoordinatesBadge}>
+                      <Text style={styles.gpsCoordinatesText}>
+                        ✓ GPS Lat: {shopCoords.lat.toFixed(5)}, Lng: {shopCoords.lng.toFixed(5)}
+                      </Text>
+                    </View>
+                  ) : (
+                    <Text style={styles.gpsHelpText}>Tap Auto-Pick to detect coordinates via phone GPS</Text>
+                  )}
+                </View>
+
+                {/* Address */}
+                <View style={styles.formGroup}>
+                  <Text style={styles.formLabel}>Shop Street Address / Landmark *</Text>
+                  <TextInput
+                    style={[styles.formInput, { height: 60, textAlignVertical: 'top' }]}
+                    placeholder="Auto-filled via GPS or enter street address"
+                    placeholderTextColor="#94a3b8"
+                    multiline={true}
+                    value={shopAddress}
+                    onChangeText={setShopAddress}
+                  />
+                </View>
+
+                {/* Delivery Radius */}
+                <View style={styles.formGroup}>
+                  <Text style={styles.formLabel}>Delivery Radius: {shopRadiusKm} km</Text>
+                  <View style={styles.radiusRow}>
+                    {[3, 5, 8, 10].map((km) => (
+                      <TouchableOpacity
+                        key={km}
+                        style={[styles.radiusBtn, shopRadiusKm === km && styles.radiusBtnActive]}
+                        onPress={() => setShopRadiusKm(km)}
+                      >
+                        <Text style={[styles.radiusBtnText, shopRadiusKm === km && styles.radiusBtnTextActive]}>
+                          {km} km
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+              </ScrollView>
+
+              {/* Modal Actions */}
+              <View style={styles.modalActionRow}>
+                <TouchableOpacity
+                  style={styles.modalCancelBtn}
+                  onPress={() => setShowRegisterModal(false)}
+                >
+                  <Text style={styles.modalCancelText}>Cancel</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.modalSubmitBtn}
+                  disabled={registeringShop}
+                  onPress={handleRegisterStore}
+                >
+                  {registeringShop ? (
+                    <ActivityIndicator color="#ffffff" size="small" />
+                  ) : (
+                    <Text style={styles.modalSubmitText}>Register & Open Store 🚀</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
 
         {/* Back Link */}
         <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
@@ -517,5 +784,251 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#6f7f91',
     fontWeight: '600',
+  },
+  registerStoreBox: {
+    marginTop: 18,
+    backgroundColor: '#fff7ed',
+    borderWidth: 1.5,
+    borderColor: '#fed7aa',
+    borderRadius: 14,
+    padding: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  registerStoreIcon: {
+    fontSize: 26,
+  },
+  registerStoreTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#9a3412',
+  },
+  registerStoreSub: {
+    fontSize: 11,
+    color: '#c2410c',
+    marginTop: 2,
+    lineHeight: 15,
+  },
+  registerStoreBtn: {
+    backgroundColor: '#ff8a16',
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 8,
+  },
+  registerStoreBtnText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#ffffff',
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(7, 30, 56, 0.72)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
+  addModalCard: {
+    width: '100%',
+    maxWidth: 420,
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  modalHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
+    paddingBottom: 10,
+  },
+  modalTitle: {
+    fontSize: 18,
+    color: '#0f172a',
+    fontWeight: '800',
+  },
+  modalSub: {
+    fontSize: 12,
+    color: '#64748b',
+    marginTop: 2,
+  },
+  modalCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#f1f5f9',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalCloseText: {
+    fontSize: 14,
+    color: '#475569',
+    fontWeight: '700',
+  },
+  formGroup: {
+    marginBottom: 14,
+  },
+  formLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#334155',
+    marginBottom: 6,
+  },
+  formInput: {
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: '#0f172a',
+  },
+  categoryScroll: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 4,
+  },
+  categoryChip: {
+    backgroundColor: '#f1f5f9',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    marginRight: 6,
+  },
+  categoryChipActive: {
+    backgroundColor: '#e0f2fe',
+    borderColor: '#0284c7',
+  },
+  categoryChipText: {
+    fontSize: 11,
+    color: '#334155',
+    fontWeight: '600',
+  },
+  categoryChipTextActive: {
+    color: '#0369a1',
+    fontWeight: '800',
+  },
+  phonePrefix: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: '#f1f5f9',
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#334155',
+    borderRightWidth: 1,
+    borderRightColor: '#cbd5e1',
+  },
+  phoneInputBox: {
+    flex: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: '#0f172a',
+  },
+  gpsHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  detectGpsBtn: {
+    backgroundColor: '#e0f2fe',
+    borderWidth: 1,
+    borderColor: '#38bdf8',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  detectGpsText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#0369a1',
+  },
+  gpsCoordinatesBadge: {
+    backgroundColor: '#f0fdf4',
+    borderWidth: 1,
+    borderColor: '#86efac',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+    marginTop: 4,
+  },
+  gpsCoordinatesText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#15803d',
+  },
+  gpsHelpText: {
+    fontSize: 11,
+    color: '#94a3b8',
+    marginTop: 4,
+    fontStyle: 'italic',
+  },
+  radiusRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 4,
+  },
+  radiusBtn: {
+    flex: 1,
+    backgroundColor: '#f1f5f9',
+    paddingVertical: 8,
+    borderRadius: 8,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  radiusBtnActive: {
+    backgroundColor: '#fef3c7',
+    borderColor: '#f59e0b',
+  },
+  radiusBtnText: {
+    fontSize: 11,
+    color: '#334155',
+    fontWeight: '600',
+  },
+  radiusBtnTextActive: {
+    color: '#b45309',
+    fontWeight: '800',
+  },
+  modalActionRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 18,
+    borderTopWidth: 1,
+    borderTopColor: '#f1f5f9',
+    paddingTop: 14,
+  },
+  modalCancelBtn: {
+    flex: 1,
+    backgroundColor: '#f1f5f9',
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  modalCancelText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#475569',
+  },
+  modalSubmitBtn: {
+    flex: 2,
+    backgroundColor: '#ff8a16',
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  modalSubmitText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#ffffff',
   },
 });

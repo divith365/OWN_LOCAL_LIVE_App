@@ -140,6 +140,24 @@ export class OwnlocalApiClient {
     return this.request(`/api/merchants/${id}`);
   }
 
+  async createMerchant(merchantData: {
+    business_name: string;
+    category: string;
+    phone: string;
+    latitude: number;
+    longitude: number;
+    address: string;
+    town?: string;
+    service_radius_km?: number;
+    own_delivery_enabled?: boolean;
+    status?: 'approved' | 'pending';
+  }): Promise<ApiResponse<MerchantProfile>> {
+    return this.request('/api/merchants', {
+      method: 'POST',
+      body: JSON.stringify(merchantData),
+    });
+  }
+
   // Search Products Across Stores in Town
   async searchProducts(q: string, params?: { lat?: number; lng?: number }): Promise<ApiResponse<any[]>> {
     const searchParams = new URLSearchParams();

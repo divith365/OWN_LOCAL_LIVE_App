@@ -8,12 +8,23 @@ import {
   ActivityIndicator,
   Alert,
   RefreshControl,
+  TextInput,
+  Modal,
 } from 'react-native';
+import * as Location from 'expo-location';
 import { Colors, Spacing, BorderRadius, Typography, getOrderStatusConfig } from '@ownlocal/ui';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { apiClient } from '../../src/api';
 import { MerchantProfile, RiderProfile, OrderStatus } from '@ownlocal/types';
 import { BrandHeader } from '../../src/components/BrandHeader';
+
+const STORE_CATEGORIES = [
+  'Food & Dining',
+  'Kirana & Daily Needs',
+  'Fresh Fruits & Veggies',
+  'Ilkal Sarees & Handloom',
+  'Pharmacy & Healthcare',
+];
 
 export default function AdminDashboardScreen() {
   const [metrics, setMetrics] = useState<any>({
@@ -31,6 +42,92 @@ export default function AdminDashboardScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'METRICS' | 'MERCHANTS' | 'RIDERS' | 'ORDERS'>('METRICS');
+
+  // Add Merchant Modal state with GPS Auto-Pick
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [newBusinessName, setNewBusinessName] = useState('');
+  const [newCategory, setNewCategory] = useState('Food & Dining');
+  const [newPhone, setNewPhone] = useState('');
+  const [newAddress, setNewAddress] = useState('');
+  const [newRadiusKm, setNewRadiusKm] = useState(6);
+  const [newCoords, setNewCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [detectingLocation, setDetectingLocation] = useState(false);
+  const [savingMerchant, setSavingMerchant] = useState(false);
+
+  const handleDetectLocation = async () => {
+    setDetectingLocation(true);
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Denied', 'Using central Ilkal coordinates.');
+        setNewCoords({ lat: 15.9587, lng: 76.1264 });
+        setNewAddress('Main Bazaar Road, Near Old Bus Stand, Ilkal - 587125');
+        return;
+      }
+      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      setNewCoords({ lat: loc.coords.latitude, lng: loc.coords.longitude });
+      const [rev] = await Location.reverseGeocodeAsync({
+        latitude: loc.coords.latitude,
+        longitude: loc.coords.longitude,
+      });
+      if (rev) {
+        const parts = [rev.name, rev.street, rev.subregion || rev.city || 'Ilkal', rev.postalCode || '587125'].filter(Boolean);
+        setNewAddress(parts.join(', '));
+      } else {
+        setNewAddress('Main Road, Ilkal - 587125');
+      }
+    } catch {
+      setNewCoords({ lat: 15.9587, lng: 76.1264 });
+      setNewAddress('Main Road, Near Old Bus Stand, Ilkal - 587125');
+    } finally {
+      setDetectingLocation(false);
+    }
+  };
+
+  const handleSaveMerchant = async () => {
+    if (!newBusinessName.trim()) {
+      Alert.alert('Required', 'Please enter shop/business name.');
+      return;
+    }
+    if (!newPhone.trim() || newPhone.trim().length !== 10) {
+      Alert.alert('Invalid Phone', 'Please enter a valid 10-digit mobile number.');
+      return;
+    }
+    if (!newAddress.trim()) {
+      Alert.alert('Required', 'Please enter shop address or auto-detect with GPS.');
+      return;
+    }
+    const coords = newCoords || { lat: 15.9587, lng: 76.1264 };
+    setSavingMerchant(true);
+    try {
+      const res = await apiClient.createMerchant({
+        business_name: newBusinessName.trim(),
+        category: newCategory,
+        phone: newPhone.trim(),
+        latitude: coords.lat,
+        longitude: coords.lng,
+        address: newAddress.trim(),
+        town: 'Ilkal',
+        service_radius_km: newRadiusKm,
+        status: 'approved',
+      });
+      if (res.success) {
+        Alert.alert('Store Onboarded! 🎉', 'Store is now live in Ilkal marketplace!');
+        setShowAddModal(false);
+        setNewBusinessName('');
+        setNewPhone('');
+        setNewAddress('');
+        setNewCoords(null);
+        fetchAdminData(true);
+      } else {
+        Alert.alert('Error', res.error?.message || 'Could not onboard store.');
+      }
+    } catch (e: any) {
+      Alert.alert('Network Error', e?.message || 'Could not connect to server.');
+    } finally {
+      setSavingMerchant(false);
+    }
+  };
 
   const pollTimerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -216,7 +313,21 @@ export default function AdminDashboardScreen() {
       {/* Tab: Merchant Approvals & Management */}
       {activeTab === 'MERCHANTS' && (
         <View style={styles.sectionCol}>
-          <Text style={styles.sectionHeading}>Merchant Compliance & Directory</Text>
+          <View style={styles.sectionHeaderRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.sectionHeading}>Merchant Directory</Text>
+              <Text style={styles.sectionSub}>Active town shops and compliance</Text>
+            </View>
+            <TouchableOpacity
+              style={styles.addMerchantBtn}
+              onPress={() => {
+                setShowAddModal(true);
+                if (!newCoords) handleDetectLocation();
+              }}
+            >
+              <Text style={styles.addMerchantBtnText}>➕ Add Store</Text>
+            </TouchableOpacity>
+          </View>
 
           {merchants.map((m) => {
             const isApproved = m.status === 'approved';
@@ -273,6 +384,161 @@ export default function AdminDashboardScreen() {
           })}
         </View>
       )}
+
+      {/* Modal: Add New Merchant with GPS Auto-Pick */}
+      <Modal
+        visible={showAddModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowAddModal(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.addModalCard}>
+            <View style={styles.modalHeaderRow}>
+              <View>
+                <Text style={styles.modalTitle}>Onboard New Store</Text>
+                <Text style={styles.modalSub}>Ilkal Town Merchant Directory</Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setShowAddModal(false)}
+                style={styles.modalCloseBtn}
+              >
+                <Text style={styles.modalCloseText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={{ maxHeight: 440 }} showsVerticalScrollIndicator={false}>
+              {/* Business Name */}
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Shop / Business Name *</Text>
+                <TextInput
+                  style={styles.formInput}
+                  placeholder="e.g. Shri Raghavendra Sweets"
+                  placeholderTextColor={Colors.slate400}
+                  value={newBusinessName}
+                  onChangeText={setNewBusinessName}
+                />
+              </View>
+
+              {/* Category */}
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Store Category *</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryScroll}>
+                  {STORE_CATEGORIES.map((cat) => (
+                    <TouchableOpacity
+                      key={cat}
+                      style={[styles.categoryChip, newCategory === cat && styles.categoryChipActive]}
+                      onPress={() => setNewCategory(cat)}
+                    >
+                      <Text style={[styles.categoryChipText, newCategory === cat && styles.categoryChipTextActive]}>
+                        {cat}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+
+              {/* Phone */}
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Store Mobile Number (10 digits) *</Text>
+                <View style={styles.phoneInputRow}>
+                  <Text style={styles.phonePrefix}>+91</Text>
+                  <TextInput
+                    style={styles.phoneInputBox}
+                    placeholder="9876543210"
+                    placeholderTextColor={Colors.slate400}
+                    keyboardType="phone-pad"
+                    maxLength={10}
+                    value={newPhone}
+                    onChangeText={setNewPhone}
+                  />
+                </View>
+              </View>
+
+              {/* GPS Auto-Pick Section */}
+              <View style={styles.formGroup}>
+                <View style={styles.gpsHeaderRow}>
+                  <Text style={styles.formLabel}>Shop GPS Location *</Text>
+                  <TouchableOpacity
+                    style={styles.detectGpsBtn}
+                    disabled={detectingLocation}
+                    onPress={handleDetectLocation}
+                  >
+                    {detectingLocation ? (
+                      <ActivityIndicator size="small" color="#0369a1" />
+                    ) : (
+                      <Text style={styles.detectGpsText}>📍 Auto-Pick GPS</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+
+                {newCoords ? (
+                  <View style={styles.gpsCoordinatesBadge}>
+                    <Text style={styles.gpsCoordinatesText}>
+                      ✓ GPS Lat: {newCoords.lat.toFixed(5)}, Lng: {newCoords.lng.toFixed(5)}
+                    </Text>
+                  </View>
+                ) : (
+                  <Text style={styles.gpsHelpText}>Tap Auto-Pick to detect coordinates via phone GPS</Text>
+                )}
+              </View>
+
+              {/* Address */}
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Street Address / Landmark *</Text>
+                <TextInput
+                  style={[styles.formInput, { height: 60, textAlignVertical: 'top' }]}
+                  placeholder="Auto-filled via GPS or enter street address"
+                  placeholderTextColor={Colors.slate400}
+                  multiline={true}
+                  value={newAddress}
+                  onChangeText={setNewAddress}
+                />
+              </View>
+
+              {/* Delivery Radius */}
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Service Radius: {newRadiusKm} km</Text>
+                <View style={styles.radiusRow}>
+                  {[3, 5, 8, 10].map((km) => (
+                    <TouchableOpacity
+                      key={km}
+                      style={[styles.radiusBtn, newRadiusKm === km && styles.radiusBtnActive]}
+                      onPress={() => setNewRadiusKm(km)}
+                    >
+                      <Text style={[styles.radiusBtnText, newRadiusKm === km && styles.radiusBtnTextActive]}>
+                        {km} km
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            </ScrollView>
+
+            {/* Modal Actions */}
+            <View style={styles.modalActionRow}>
+              <TouchableOpacity
+                style={styles.modalCancelBtn}
+                onPress={() => setShowAddModal(false)}
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.modalSubmitBtn}
+                disabled={savingMerchant}
+                onPress={handleSaveMerchant}
+              >
+                {savingMerchant ? (
+                  <ActivityIndicator color={Colors.white} size="small" />
+                ) : (
+                  <Text style={styles.modalSubmitText}>Onboard & Go Live 🚀</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* Tab: Riders Directory & Duty Status */}
       {activeTab === 'RIDERS' && (
@@ -490,6 +756,11 @@ const styles = StyleSheet.create({
     ...Typography.title3,
     color: Colors.slate900,
   },
+  sectionSub: {
+    ...Typography.caption,
+    color: Colors.textMuted,
+    marginTop: 2,
+  },
   auditCard: {
     backgroundColor: Colors.white,
     padding: Spacing.lg,
@@ -645,5 +916,241 @@ const styles = StyleSheet.create({
     ...Typography.captionBold,
     color: Colors.slate700,
     marginTop: 2,
+  },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.sm,
+  },
+  addMerchantBtn: {
+    backgroundColor: '#ff8a16',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: BorderRadius.md,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  addMerchantBtnText: {
+    ...Typography.captionBold,
+    color: Colors.white,
+    fontWeight: '800',
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(7, 30, 56, 0.72)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: Spacing.lg,
+  },
+  addModalCard: {
+    width: '100%',
+    maxWidth: 420,
+    backgroundColor: Colors.white,
+    borderRadius: 20,
+    padding: Spacing.lg,
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  modalHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.slate100,
+    paddingBottom: Spacing.sm,
+  },
+  modalTitle: {
+    ...Typography.title3,
+    color: Colors.slate900,
+    fontWeight: '800',
+  },
+  modalSub: {
+    ...Typography.caption,
+    color: Colors.textMuted,
+    marginTop: 2,
+  },
+  modalCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: Colors.slate100,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalCloseText: {
+    fontSize: 14,
+    color: Colors.slate600,
+    fontWeight: '700',
+  },
+  formGroup: {
+    marginBottom: Spacing.md,
+  },
+  formLabel: {
+    ...Typography.captionBold,
+    color: Colors.slate800,
+    marginBottom: 6,
+  },
+  formInput: {
+    backgroundColor: Colors.slate50,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    ...Typography.body,
+    color: Colors.slate900,
+  },
+  categoryScroll: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 4,
+  },
+  categoryChip: {
+    backgroundColor: Colors.slate100,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: BorderRadius.full,
+    borderWidth: 1,
+    borderColor: Colors.slate200,
+    marginRight: 6,
+  },
+  categoryChipActive: {
+    backgroundColor: '#e0f2fe',
+    borderColor: '#0284c7',
+  },
+  categoryChipText: {
+    ...Typography.caption,
+    color: Colors.slate700,
+    fontWeight: '600',
+  },
+  categoryChipTextActive: {
+    color: '#0369a1',
+    fontWeight: '800',
+  },
+  phoneInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.slate50,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: BorderRadius.md,
+    overflow: 'hidden',
+  },
+  phonePrefix: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: Colors.slate100,
+    ...Typography.bodyBold,
+    color: Colors.slate700,
+    borderRightWidth: 1,
+    borderRightColor: Colors.border,
+  },
+  phoneInputBox: {
+    flex: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    ...Typography.body,
+    color: Colors.slate900,
+  },
+  gpsHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  detectGpsBtn: {
+    backgroundColor: '#e0f2fe',
+    borderWidth: 1,
+    borderColor: '#38bdf8',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: BorderRadius.sm,
+  },
+  detectGpsText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#0369a1',
+  },
+  gpsCoordinatesBadge: {
+    backgroundColor: '#f0fdf4',
+    borderWidth: 1,
+    borderColor: '#86efac',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: BorderRadius.sm,
+    marginTop: 4,
+  },
+  gpsCoordinatesText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#15803d',
+  },
+  gpsHelpText: {
+    ...Typography.caption,
+    color: Colors.textMuted,
+    marginTop: 4,
+    fontStyle: 'italic',
+  },
+  radiusRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 4,
+  },
+  radiusBtn: {
+    flex: 1,
+    backgroundColor: Colors.slate100,
+    paddingVertical: 8,
+    borderRadius: BorderRadius.md,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.slate200,
+  },
+  radiusBtnActive: {
+    backgroundColor: '#fef3c7',
+    borderColor: '#f59e0b',
+  },
+  radiusBtnText: {
+    ...Typography.caption,
+    color: Colors.slate700,
+    fontWeight: '600',
+  },
+  radiusBtnTextActive: {
+    color: '#b45309',
+    fontWeight: '800',
+  },
+  modalActionRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: Spacing.lg,
+    borderTopWidth: 1,
+    borderTopColor: Colors.slate100,
+    paddingTop: Spacing.md,
+  },
+  modalCancelBtn: {
+    flex: 1,
+    backgroundColor: Colors.slate100,
+    paddingVertical: 12,
+    borderRadius: BorderRadius.md,
+    alignItems: 'center',
+  },
+  modalCancelText: {
+    ...Typography.bodyBold,
+    color: Colors.slate700,
+  },
+  modalSubmitBtn: {
+    flex: 2,
+    backgroundColor: '#ff8a16',
+    paddingVertical: 12,
+    borderRadius: BorderRadius.md,
+    alignItems: 'center',
+  },
+  modalSubmitText: {
+    ...Typography.bodyBold,
+    color: Colors.white,
   },
 });
