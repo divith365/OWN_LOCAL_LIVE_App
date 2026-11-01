@@ -11,7 +11,10 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.ownlocal.live"
+      "bundleIdentifier": "com.ownlocal.live",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "OWNLOCAL LIVE needs your location to discover local stores and track deliveries in Ilkal."
+      }
     },
     "android": {
       "package": "com.ownlocal.live",
@@ -24,7 +27,13 @@
       "bundler": "metro"
     },
     "plugins": [
-      "expo-router"
+      "expo-router",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "OWNLOCAL LIVE needs your location to discover local stores and track deliveries in Ilkal."
+        }
+      ]
     ]
   }
 }
