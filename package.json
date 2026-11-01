@@ -13,6 +13,7 @@
     "mobile:android": "npm --workspace=apps/mobile run android",
     "mobile:ios": "npm --workspace=apps/mobile run ios",
     "mobile:web": "npm --workspace=apps/mobile run web",
+    "mobile:apk": "cd apps/mobile && npx eas-cli build --platform android --profile preview",
     "worker:dev": "npm --workspace=backend/workers run dev",
     "worker:deploy": "npm --workspace=backend/workers run deploy",
     "d1:migrate:local": "npm --workspace=backend/workers run d1:migrate:local",
