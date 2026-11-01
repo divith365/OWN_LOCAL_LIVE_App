@@ -120,6 +120,61 @@ export default function LoginScreen() {
     }
   };
 
+  // Rider Self-Registration Modal state
+  const [showRiderModal, setShowRiderModal] = useState(false);
+  const [riderName, setRiderName] = useState('');
+  const [riderPhone, setRiderPhone] = useState('');
+  const [riderVehicleType, setRiderVehicleType] = useState<'bike' | 'scooter' | 'cycle' | 'auto'>('bike');
+  const [riderVehicleNumber, setRiderVehicleNumber] = useState('');
+  const [riderPreferredRadiusKm, setRiderPreferredRadiusKm] = useState(3.0);
+  const [registeringRider, setRegisteringRider] = useState(false);
+
+  const handleRegisterRider = async () => {
+    if (!riderName.trim()) {
+      Alert.alert('Required', 'Please enter your full name.');
+      return;
+    }
+    if (!riderPhone.trim() || riderPhone.trim().length !== 10) {
+      Alert.alert('Invalid Phone', 'Please enter a valid 10-digit mobile number.');
+      return;
+    }
+    if (!riderVehicleNumber.trim()) {
+      Alert.alert('Required', 'Please enter your vehicle registration number (e.g. KA-29-EE-1234).');
+      return;
+    }
+
+    setRegisteringRider(true);
+    try {
+      const res = await apiClient.registerRider({
+        name: riderName.trim(),
+        phone: riderPhone.trim(),
+        vehicle_type: riderVehicleType,
+        vehicle_number: riderVehicleNumber.trim().toUpperCase(),
+        preferred_radius_km: riderPreferredRadiusKm,
+      });
+
+      if (res.success) {
+        Alert.alert(
+          'Rider Registered! 🎉',
+          `Welcome to the fleet, ${riderName}! You are active for deliveries with preferred pickup radius of ${riderPreferredRadiusKm} km.`
+        );
+        setShowRiderModal(false);
+        setRiderName('');
+        setRiderPhone('');
+        setRiderVehicleNumber('');
+        // Auto login as rider
+        await loginWithOtp(riderPhone.trim(), '123456', 'rider');
+        router.replace('/(rider)');
+      } else {
+        Alert.alert('Registration Error', res.error?.message || 'Could not register as rider.');
+      }
+    } catch (e: any) {
+      Alert.alert('Network Error', e?.message || 'Could not connect to server.');
+    } finally {
+      setRegisteringRider(false);
+    }
+  };
+
   const demoRoles: Array<{
     id: UserRole;
     label: string;
@@ -365,6 +420,21 @@ export default function LoginScreen() {
               <Text style={styles.registerStoreBtnText}>Register Store</Text>
             </TouchableOpacity>
           </View>
+
+          {/* Rider Self-Registration Banner */}
+          <View style={[styles.registerStoreBox, { borderColor: '#bfdbfe', backgroundColor: '#f0f9ff', marginTop: 10 }]}>
+            <Text style={styles.registerStoreIcon}>🛵</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.registerStoreTitle, { color: '#0369a1' }]}>Want to deliver & earn in Ilkal?</Text>
+              <Text style={[styles.registerStoreSub, { color: '#0c4a6e' }]}>Join the delivery fleet & earn ₹35 per completed trip.</Text>
+            </View>
+            <TouchableOpacity
+              style={[styles.registerStoreBtn, { backgroundColor: '#0284c7' }]}
+              onPress={() => setShowRiderModal(true)}
+            >
+              <Text style={styles.registerStoreBtnText}>Join Fleet</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Modal: Register Store with GPS Auto-Pick */}
@@ -515,6 +585,134 @@ export default function LoginScreen() {
                     <ActivityIndicator color="#ffffff" size="small" />
                   ) : (
                     <Text style={styles.modalSubmitText}>Register & Open Store 🚀</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Modal: Register as Rider */}
+        <Modal
+          visible={showRiderModal}
+          transparent={true}
+          animationType="slide"
+          onRequestClose={() => setShowRiderModal(false)}
+        >
+          <View style={styles.modalBackdrop}>
+            <View style={styles.addModalCard}>
+              <View style={styles.modalHeaderRow}>
+                <View>
+                  <Text style={styles.modalTitle}>Join as Delivery Rider</Text>
+                  <Text style={styles.modalSub}>Deliver in Ilkal & earn per order</Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => setShowRiderModal(false)}
+                  style={styles.modalCloseBtn}
+                >
+                  <Text style={styles.modalCloseText}>✕</Text>
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView style={{ maxHeight: 440 }} showsVerticalScrollIndicator={false}>
+                {/* Rider Name */}
+                <View style={styles.formGroup}>
+                  <Text style={styles.formLabel}>Full Name *</Text>
+                  <TextInput
+                    style={styles.formInput}
+                    placeholder="e.g. Ramesh Pujar"
+                    placeholderTextColor="#94a3b8"
+                    value={riderName}
+                    onChangeText={setRiderName}
+                  />
+                </View>
+
+                {/* Mobile Number */}
+                <View style={styles.formGroup}>
+                  <Text style={styles.formLabel}>Mobile Number (10 digits) *</Text>
+                  <View style={styles.phoneInputRow}>
+                    <Text style={styles.phonePrefix}>+91</Text>
+                    <TextInput
+                      style={styles.phoneInputBox}
+                      placeholder="9876543210"
+                      placeholderTextColor="#94a3b8"
+                      keyboardType="phone-pad"
+                      maxLength={10}
+                      value={riderPhone}
+                      onChangeText={setRiderPhone}
+                    />
+                  </View>
+                </View>
+
+                {/* Vehicle Type */}
+                <View style={styles.formGroup}>
+                  <Text style={styles.formLabel}>Vehicle Type *</Text>
+                  <View style={styles.radiusRow}>
+                    {(['bike', 'scooter', 'cycle', 'auto'] as const).map((vt) => (
+                      <TouchableOpacity
+                        key={vt}
+                        style={[styles.radiusBtn, riderVehicleType === vt && styles.radiusBtnActive]}
+                        onPress={() => setRiderVehicleType(vt)}
+                      >
+                        <Text style={[styles.radiusBtnText, riderVehicleType === vt && styles.radiusBtnTextActive]}>
+                          {vt === 'bike' ? '🏍️ Bike' : vt === 'scooter' ? '🛵 Scooter' : vt === 'cycle' ? '🚲 Cycle' : '🛺 Auto'}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+
+                {/* Vehicle Registration Number */}
+                <View style={styles.formGroup}>
+                  <Text style={styles.formLabel}>Vehicle Registration Number *</Text>
+                  <TextInput
+                    style={styles.formInput}
+                    placeholder="e.g. KA-29-EE-5432"
+                    placeholderTextColor="#94a3b8"
+                    autoCapitalize="characters"
+                    value={riderVehicleNumber}
+                    onChangeText={setRiderVehicleNumber}
+                  />
+                </View>
+
+                {/* Preferred Operating Radius */}
+                <View style={styles.formGroup}>
+                  <Text style={styles.formLabel}>Preferred Pickup Radius: {riderPreferredRadiusKm} km</Text>
+                  <Text style={styles.gpsHelpText}>Stores matched within this radius from your GPS location</Text>
+                  <View style={styles.radiusRow}>
+                    {[2, 3, 5, 8, 10].map((km) => (
+                      <TouchableOpacity
+                        key={km}
+                        style={[styles.radiusBtn, riderPreferredRadiusKm === km && styles.radiusBtnActive]}
+                        onPress={() => setRiderPreferredRadiusKm(km)}
+                      >
+                        <Text style={[styles.radiusBtnText, riderPreferredRadiusKm === km && styles.radiusBtnTextActive]}>
+                          {km} km
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+              </ScrollView>
+
+              {/* Modal Actions */}
+              <View style={styles.modalActionRow}>
+                <TouchableOpacity
+                  style={styles.modalCancelBtn}
+                  onPress={() => setShowRiderModal(false)}
+                >
+                  <Text style={styles.modalCancelText}>Cancel</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.modalSubmitBtn, { backgroundColor: '#0284c7' }]}
+                  disabled={registeringRider}
+                  onPress={handleRegisterRider}
+                >
+                  {registeringRider ? (
+                    <ActivityIndicator color="#ffffff" size="small" />
+                  ) : (
+                    <Text style={styles.modalSubmitText}>Join Delivery Fleet 🛵</Text>
                   )}
                 </TouchableOpacity>
               </View>

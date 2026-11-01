@@ -131,6 +131,56 @@ export default function AdminDashboardScreen() {
     }
   };
 
+  // Add Rider Modal state
+  const [showAddRiderModal, setShowAddRiderModal] = useState(false);
+  const [newRiderName, setNewRiderName] = useState('');
+  const [newRiderPhone, setNewRiderPhone] = useState('');
+  const [newRiderVehicleType, setNewRiderVehicleType] = useState<'bike' | 'scooter' | 'cycle' | 'auto'>('bike');
+  const [newRiderVehicleNumber, setNewRiderVehicleNumber] = useState('');
+  const [newRiderRadiusKm, setNewRiderRadiusKm] = useState(3.0);
+  const [savingRider, setSavingRider] = useState(false);
+
+  const handleSaveRider = async () => {
+    if (!newRiderName.trim()) {
+      Alert.alert('Required', 'Please enter rider full name.');
+      return;
+    }
+    if (!newRiderPhone.trim() || newRiderPhone.trim().length !== 10) {
+      Alert.alert('Invalid Phone', 'Please enter a valid 10-digit mobile number.');
+      return;
+    }
+    if (!newRiderVehicleNumber.trim()) {
+      Alert.alert('Required', 'Please enter vehicle registration number.');
+      return;
+    }
+
+    setSavingRider(true);
+    try {
+      const res = await apiClient.registerRider({
+        name: newRiderName.trim(),
+        phone: newRiderPhone.trim(),
+        vehicle_type: newRiderVehicleType,
+        vehicle_number: newRiderVehicleNumber.trim().toUpperCase(),
+        preferred_radius_km: newRiderRadiusKm,
+      });
+
+      if (res.success) {
+        Alert.alert('Rider Onboarded! 🎉', `${newRiderName} is now registered in the fleet.`);
+        setShowAddRiderModal(false);
+        setNewRiderName('');
+        setNewRiderPhone('');
+        setNewRiderVehicleNumber('');
+        fetchAdminData(true);
+      } else {
+        Alert.alert('Error', res.error?.message || 'Could not onboard rider.');
+      }
+    } catch (e: any) {
+      Alert.alert('Network Error', e?.message || 'Could not connect to server.');
+    } finally {
+      setSavingRider(false);
+    }
+  };
+
   const pollTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const fetchAdminData = useCallback(async (isManual = false) => {
@@ -566,6 +616,133 @@ export default function AdminDashboardScreen() {
         </View>
       </Modal>
 
+      {/* Modal: Add / Onboard New Rider by Admin */}
+      <Modal
+        visible={showAddRiderModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowAddRiderModal(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.addModalCard}>
+            <View style={styles.modalHeaderRow}>
+              <View>
+                <Text style={styles.modalTitle}>Onboard Delivery Rider</Text>
+                <Text style={styles.modalSub}>Add rider to Ilkal town delivery fleet</Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setShowAddRiderModal(false)}
+                style={styles.modalCloseBtn}
+              >
+                <Text style={styles.modalCloseText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={{ maxHeight: 440 }} showsVerticalScrollIndicator={false}>
+              {/* Rider Name */}
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Rider Full Name *</Text>
+                <TextInput
+                  style={styles.formInput}
+                  placeholder="e.g. Basavaraj Kulkarni"
+                  placeholderTextColor={Colors.slate400}
+                  value={newRiderName}
+                  onChangeText={setNewRiderName}
+                />
+              </View>
+
+              {/* Mobile Number */}
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Mobile Number (10 digits) *</Text>
+                <View style={styles.phoneInputRow}>
+                  <Text style={styles.phonePrefix}>+91</Text>
+                  <TextInput
+                    style={styles.phoneInputBox}
+                    placeholder="9876543210"
+                    placeholderTextColor={Colors.slate400}
+                    keyboardType="phone-pad"
+                    maxLength={10}
+                    value={newRiderPhone}
+                    onChangeText={setNewRiderPhone}
+                  />
+                </View>
+              </View>
+
+              {/* Vehicle Type */}
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Vehicle Type *</Text>
+                <View style={styles.radiusRow}>
+                  {(['bike', 'scooter', 'cycle', 'auto'] as const).map((vt) => (
+                    <TouchableOpacity
+                      key={vt}
+                      style={[styles.radiusBtn, newRiderVehicleType === vt && styles.radiusBtnActive]}
+                      onPress={() => setNewRiderVehicleType(vt)}
+                    >
+                      <Text style={[styles.radiusBtnText, newRiderVehicleType === vt && styles.radiusBtnTextActive]}>
+                        {vt === 'bike' ? '🏍️ Bike' : vt === 'scooter' ? '🛵 Scooter' : vt === 'cycle' ? '🚲 Cycle' : '🛺 Auto'}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              {/* Vehicle Number */}
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Vehicle Registration Number *</Text>
+                <TextInput
+                  style={styles.formInput}
+                  placeholder="e.g. KA-29-EE-7890"
+                  placeholderTextColor={Colors.slate400}
+                  autoCapitalize="characters"
+                  value={newRiderVehicleNumber}
+                  onChangeText={setNewRiderVehicleNumber}
+                />
+              </View>
+
+              {/* Preferred Radius */}
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Preferred Pickup Radius: {newRiderRadiusKm} km</Text>
+                <View style={styles.radiusRow}>
+                  {[2, 3, 5, 8, 10].map((km) => (
+                    <TouchableOpacity
+                      key={km}
+                      style={[styles.radiusBtn, newRiderRadiusKm === km && styles.radiusBtnActive]}
+                      onPress={() => setNewRiderRadiusKm(km)}
+                    >
+                      <Text style={[styles.radiusBtnText, newRiderRadiusKm === km && styles.radiusBtnTextActive]}>
+                        {km} km
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            </ScrollView>
+
+            {/* Modal Actions */}
+            <View style={styles.modalActionRow}>
+              <TouchableOpacity
+                style={styles.modalCancelBtn}
+                onPress={() => setShowAddRiderModal(false)}
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.modalSubmitBtn, { backgroundColor: '#0284c7' }]}
+                disabled={savingRider}
+                onPress={handleSaveRider}
+              >
+                {savingRider ? (
+                  <ActivityIndicator color={Colors.white} size="small" />
+                ) : (
+                  <Text style={styles.modalSubmitText}>Add Rider to Fleet 🛵</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       {/* Tab: Riders Directory & Duty Status */}
       {activeTab === 'RIDERS' && (
         <View style={styles.sectionCol}>
@@ -597,7 +774,15 @@ export default function AdminDashboardScreen() {
             </View>
           </View>
 
-          <Text style={styles.sectionHeading}>Rider Fleet Directory ({riders.length})</Text>
+          <View style={styles.sectionHeaderRow}>
+            <Text style={styles.sectionHeading}>Rider Fleet Directory ({riders.length})</Text>
+            <TouchableOpacity
+              style={[styles.addMerchantBtn, { backgroundColor: '#0284c7' }]}
+              onPress={() => setShowAddRiderModal(true)}
+            >
+              <Text style={styles.addMerchantBtnText}>+ Onboard Rider</Text>
+            </TouchableOpacity>
+          </View>
 
           {riders.map((r) => {
             const isApproved = r.status === 'approved';
