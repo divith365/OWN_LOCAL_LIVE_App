@@ -435,13 +435,6 @@ export default function AdminDashboardScreen() {
             <Text style={styles.auditText}>• Registered Fleet: {riders.length} Delivery Partners</Text>
             <Text style={styles.auditText}>• Security & Integrity: 4-Digit Delivery OTP Handshake Active</Text>
           </View>
-
-          <View style={styles.governanceCard}>
-            <Text style={styles.govTitle}>Town Platform Operations Guidelines</Text>
-            <Text style={styles.govText}>
-              All order state transitions strictly enforce single-store exclusivity, delivery OTP verification, and tamper-proof financial logging.
-            </Text>
-          </View>
         </View>
       )}
 
